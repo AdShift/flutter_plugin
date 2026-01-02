@@ -158,7 +158,7 @@ void main() {
 
   group('AdshiftConfig', () {
     test('toMap includes all fields', () {
-      final config = AdshiftConfig(
+      const config = AdshiftConfig(
         apiKey: 'test-key',
         isDebug: true,
         appOpenDebounceMs: 5000,
@@ -174,7 +174,7 @@ void main() {
     });
 
     test('toMap excludes null optional fields', () {
-      final config = AdshiftConfig(apiKey: 'test-key');
+      const config = AdshiftConfig(apiKey: 'test-key');
       final map = config.toMap();
       expect(map.containsKey('disableSKAN'), false);
       expect(map.containsKey('collectOaid'), false);
