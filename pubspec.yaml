@@ -1,0 +1,36 @@
+name: adshift_flutter_sdk
+description: "AdShift SDK for Flutter - Mobile Attribution, Event Tracking, SKAdNetwork 4.0+, Deep Linking and GDPR/TCF 2.2 Compliance."
+version: 1.0.0
+homepage: https://adshift.com
+repository: https://github.com/AdShift/adshift-flutter-sdk
+documentation: https://dev.adshift.com/docs/flutter-sdk
+issue_tracker: https://github.com/AdShift/adshift-flutter-sdk/issues
+topics:
+  - attribution
+  - analytics
+  - mobile-attribution
+  - skadnetwork
+  - deep-linking
+
+environment:
+  sdk: ^3.10.4
+  flutter: '>=3.3.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  plugin_platform_interface: ^2.0.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: com.adshift.adshift_flutter_sdk
+        pluginClass: AdshiftFlutterSdkPlugin
+      ios:
+        pluginClass: AdshiftFlutterSdkPlugin
