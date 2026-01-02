@@ -1,10 +1,12 @@
-# AdShift Flutter SDK
+# AdShift Flutter Plugin
 
 [![pub package](https://img.shields.io/pub/v/adshift_flutter_sdk.svg)](https://pub.dev/packages/adshift_flutter_sdk)
 [![Platform](https://img.shields.io/badge/platform-iOS%20%7C%20Android-blue.svg)](https://pub.dev/packages/adshift_flutter_sdk)
 [![License](https://img.shields.io/badge/license-Proprietary-red.svg)](LICENSE)
 
-Official AdShift SDK for Flutter. Enable mobile attribution, in-app event tracking, SKAdNetwork 4.0+ integration, deep linking, and GDPR/TCF 2.2 compliance in your Flutter apps.
+Official AdShift Flutter plugin for mobile attribution. This plugin wraps the native [iOS SDK](https://github.com/AdShift/ios-sdk) and [Android SDK](https://github.com/AadShift/android-sdk), providing a unified Dart API for Flutter apps.
+
+Enable mobile attribution, in-app event tracking, SKAdNetwork 4.0+ integration, deep linking, and GDPR/TCF 2.2 compliance in your Flutter apps.
 
 ---
 
@@ -433,7 +435,7 @@ flutter run
 
 - 📧 **Email:** support@adshift.com
 - 📖 **Documentation:** https://dev.adshift.com/docs/flutter-sdk
-- 🐛 **Issues:** https://github.com/AdShift/adshift-flutter-sdk/issues
+- 🐛 **Issues:** https://github.com/AdShift/flutter_plugin/issues
 
 ---
 

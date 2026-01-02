@@ -416,6 +416,8 @@ public class AdshiftFlutterSdkPlugin: NSObject, FlutterPlugin, FlutterStreamHand
                 errorMessage = "Deep link not found"
             case .systemError(let message):
                 errorMessage = message
+            @unknown default:
+                errorMessage = "Unknown error"
             }
         }
         
