@@ -16,10 +16,8 @@ Pod::Spec.new do |s|
 
   s.dependency 'Flutter'
   
-  # Native AdShift iOS SDK - pobierane z GitHub releases
-  # W projekcie Flutter, Podfile musi dodać źródło:
-  # pod 'AdshiftSDK', :podspec => 'https://raw.githubusercontent.com/AdShift/ios-sdk/v1.0.0/AdshiftSDK.podspec'
-  s.dependency 'AdshiftSDK'
+  # Native AdShift iOS SDK from CocoaPods
+  s.dependency 'AdshiftSDK', '~> 1.0'
 
   s.pod_target_xcconfig = { 
     'DEFINES_MODULE' => 'YES', 
