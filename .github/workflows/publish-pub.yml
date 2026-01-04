@@ -1,0 +1,35 @@
+name: Publish to pub.dev
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.38.x'
+          channel: 'stable'
+
+      - name: Setup pub.dev credentials
+        run: |
+          mkdir -p ~/.config/dart
+          echo '${{ secrets.PUB_CREDENTIALS }}' > ~/.config/dart/pub-credentials.json
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Verify package
+        run: flutter pub publish --dry-run
+
+      - name: Publish to pub.dev
+        run: flutter pub publish --force
+
