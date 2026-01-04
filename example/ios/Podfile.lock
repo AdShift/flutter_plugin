@@ -1,6 +1,6 @@
 PODS:
   - adshift_flutter_sdk (1.0.0):
-    - AdshiftSDK
+    - AdshiftSDK (~> 1.0)
     - Flutter
   - AdshiftSDK (1.0.0)
   - Flutter (1.0.0)
@@ -9,26 +9,27 @@ PODS:
 
 DEPENDENCIES:
   - adshift_flutter_sdk (from `.symlinks/plugins/adshift_flutter_sdk/ios`)
-  - AdshiftSDK (from `https://raw.githubusercontent.com/AdShift/ios-sdk/v1.0.0/AdshiftSDK.podspec`)
   - Flutter (from `Flutter`)
   - integration_test (from `.symlinks/plugins/integration_test/ios`)
+
+SPEC REPOS:
+  trunk:
+    - AdshiftSDK
 
 EXTERNAL SOURCES:
   adshift_flutter_sdk:
     :path: ".symlinks/plugins/adshift_flutter_sdk/ios"
-  AdshiftSDK:
-    :podspec: https://raw.githubusercontent.com/AdShift/ios-sdk/v1.0.0/AdshiftSDK.podspec
   Flutter:
     :path: Flutter
   integration_test:
     :path: ".symlinks/plugins/integration_test/ios"
 
 SPEC CHECKSUMS:
-  adshift_flutter_sdk: dbfc5cb3a29941e09881a6230583df2a722b0ba1
-  AdshiftSDK: 160c8d2323fa8399c7642f3cc98f256cc5307dcf
+  adshift_flutter_sdk: e4c044ee46845ef6394f906c110058e6cede73f7
+  AdshiftSDK: ff3fea2aa0130eaa5a832d77eb42a7ce09932a2b
   Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
   integration_test: 4a889634ef21a45d28d50d622cf412dc6d9f586e
 
-PODFILE CHECKSUM: 0b881ed0de0b057c9f11202df20e598bb9dbe9c0
+PODFILE CHECKSUM: e7d96b3b6555809e82b758f91baa39c2cbdbd512
 
 COCOAPODS: 1.16.2
