@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:adshift_flutter_sdk/adshift_flutter_sdk.dart';
 
@@ -110,11 +111,22 @@ class _HomePageState extends State<HomePage> {
   // SDK Lifecycle
   // ============================================
 
+  String _getApiKey() {
+    // TODO: Replace with your API keys from the AdShift dashboard
+    // iOS and Android apps typically have different API keys
+    if (Platform.isIOS) {
+      return 'YOUR_IOS_API_KEY';
+    } else if (Platform.isAndroid) {
+      return 'YOUR_ANDROID_API_KEY';
+    }
+    return '';
+  }
+
   Future<void> _initSdk() async {
     try {
       await AdshiftFlutterSdk.instance.initialize(
-        const AdshiftConfig(
-          apiKey: 'YOUR_API_KEY_HERE', // Replace with real API key
+        AdshiftConfig(
+          apiKey: _getApiKey(),
           isDebug: true,
           appOpenDebounceMs: 10000,
         ),

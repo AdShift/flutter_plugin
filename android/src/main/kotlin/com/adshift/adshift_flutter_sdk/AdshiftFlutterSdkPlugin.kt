@@ -4,6 +4,8 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Handler
+import android.os.Looper
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.embedding.engine.plugins.activity.ActivityAware
 import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
@@ -38,6 +40,9 @@ class AdshiftFlutterSdkPlugin :
     private var activity: Activity? = null
     private var eventSink: EventChannel.EventSink? = null
     private var deepLinkListenerRegistered = false
+    
+    // Handler for main thread operations (required by Flutter channels)
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     // MARK: - FlutterPlugin
 
@@ -366,7 +371,10 @@ class AdshiftFlutterSdkPlugin :
             AdShiftLib.setDeepLinkListener(object : DeepLinkListener {
                 override fun onDeepLinking(deepLinkResult: DeepLinkResult) {
                     val responseMap = mapDeepLinkResultToMap(deepLinkResult)
-                    result.success(responseMap)
+                    // Callback may be on background thread, post to main
+                    mainHandler.post {
+                        result.success(responseMap)
+                    }
                 }
             })
             
@@ -390,7 +398,10 @@ class AdshiftFlutterSdkPlugin :
                 AdShiftLib.setDeepLinkListener(object : DeepLinkListener {
                     override fun onDeepLinking(deepLinkResult: DeepLinkResult) {
                         val responseMap = mapDeepLinkResultToMap(deepLinkResult)
-                        eventSink?.success(responseMap)
+                        // Must call eventSink on main thread
+                        mainHandler.post {
+                            eventSink?.success(responseMap)
+                        }
                     }
                 })
                 deepLinkListenerRegistered = true
