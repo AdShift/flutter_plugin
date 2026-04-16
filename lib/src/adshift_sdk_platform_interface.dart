@@ -86,6 +86,17 @@ abstract class AdshiftSdkPlatform extends PlatformInterface {
     throw UnimplementedError('trackPurchase() has not been implemented.');
   }
 
+  /// Logs an ad revenue event from impression-level revenue data.
+  Future<void> logAdRevenue({
+    required String monetizationNetwork,
+    required String mediationNetwork,
+    required String currency,
+    required double revenue,
+    Map<String, dynamic>? additionalParameters,
+  }) {
+    throw UnimplementedError('logAdRevenue() has not been implemented.');
+  }
+
   // ============ Consent ============
 
   /// Sets user consent data.
