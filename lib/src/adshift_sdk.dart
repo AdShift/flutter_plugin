@@ -274,6 +274,9 @@ class AdshiftFlutterSdk {
     if (revenue.isNaN || revenue <= 0) {
       throw ArgumentError('revenue must be a positive number');
     }
+    if (revenue > 10.0) {
+      throw ArgumentError('revenue exceeds maximum allowed value per impression');
+    }
     await _platform.logAdRevenue(
       monetizationNetwork: monetizationNetwork,
       mediationNetwork: mediationNetwork,
