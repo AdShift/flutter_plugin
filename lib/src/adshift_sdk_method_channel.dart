@@ -86,6 +86,17 @@ class MethodChannelAdshiftSdk extends AdshiftSdkPlatform {
   }
 
   @override
+  Future<void> setBrandedDomains(List<String> domains) async {
+    try {
+      await methodChannel.invokeMethod('setBrandedDomains', {
+        'domains': domains,
+      });
+    } on PlatformException catch (e) {
+      throw _handleError('setBrandedDomains', e);
+    }
+  }
+
+  @override
   Future<void> setAppOpenDebounceMs(int ms) async {
     try {
       await methodChannel.invokeMethod('setAppOpenDebounceMs', {'ms': ms});

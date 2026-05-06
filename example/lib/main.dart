@@ -148,6 +148,16 @@ class _HomePageState extends State<HomePage> {
       return;
     }
     try {
+      // Branded RightLink hostnames example. Uncomment and replace the host
+      // to also accept your own customer-facing hostname (e.g.
+      // link.your-domain.com). You MUST also declare the same host in your
+      // platform manifests (Android intent-filter and iOS Associated Domains
+      // entitlement) — without that the OS never delivers the deep link to
+      // the SDK in the first place.
+      // await AdshiftFlutterSdk.instance.setBrandedDomains([
+      //   'link.your-domain.com',
+      // ]);
+
       await AdshiftFlutterSdk.instance.start();
       final started = await AdshiftFlutterSdk.instance.isStarted();
       _addLog('✅ SDK started');
