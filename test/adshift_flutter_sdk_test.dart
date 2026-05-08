@@ -53,6 +53,15 @@ class MockAdshiftSdkPlatform
   }) async {}
 
   @override
+  Future<void> logAdRevenue({
+    required String monetizationNetwork,
+    required String mediationNetwork,
+    required String currency,
+    required double revenue,
+    Map<String, dynamic>? additionalParameters,
+  }) async {}
+
+  @override
   Future<void> setConsentData(AdshiftConsent consent) async {}
 
   @override
