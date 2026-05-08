@@ -162,6 +162,30 @@ class AdshiftFlutterSdk {
     await _platform.setCustomerUserId(userId);
   }
 
+  /// Configures the list of branded RightLink hostnames the SDK should treat
+  /// as attribution sources, in addition to the default `*.rightlink.me`.
+  ///
+  /// Required when your campaigns use a custom CNAME (e.g. `link.your-domain.com`).
+  /// You also need to declare the same hostname in your platform manifests
+  /// (Android `AndroidManifest.xml` intent-filter and iOS Associated Domains
+  /// entitlement) — without that the OS will not deliver the deep link to the
+  /// SDK in the first place.
+  ///
+  /// Call this BEFORE [start] so the very first click on a branded link
+  /// is attributed.
+  ///
+  /// Example:
+  /// ```dart
+  /// await AdshiftFlutterSdk.instance.setBrandedDomains([
+  ///   'link.your-domain.com',
+  /// ]);
+  /// await AdshiftFlutterSdk.instance.start();
+  /// ```
+  Future<void> setBrandedDomains(List<String> domains) async {
+    _checkInitialized();
+    await _platform.setBrandedDomains(domains);
+  }
+
   /// Sets the app open debounce interval in milliseconds.
   ///
   /// Controls how often APP_OPEN events are sent when app returns from background.

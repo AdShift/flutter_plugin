@@ -62,6 +62,9 @@ public class AdshiftFlutterSdkPlugin: NSObject, FlutterPlugin, FlutterStreamHand
         case "setCustomerUserId":
             handleSetCustomerUserId(call, result: result)
             
+        case "setBrandedDomains":
+            handleSetBrandedDomains(call, result: result)
+            
         case "setAppOpenDebounceMs":
             handleSetAppOpenDebounceMs(call, result: result)
             
@@ -175,6 +178,18 @@ public class AdshiftFlutterSdkPlugin: NSObject, FlutterPlugin, FlutterStreamHand
         }
         
         Adshift.shared.setCustomerUserId(userId)
+        result(nil)
+    }
+    
+    @MainActor
+    private func handleSetBrandedDomains(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+        guard let args = call.arguments as? [String: Any],
+              let domains = args["domains"] as? [String] else {
+            result(FlutterError(code: "INVALID_ARGS", message: "domains list is required", details: nil))
+            return
+        }
+        
+        Adshift.shared.brandedDomains = domains
         result(nil)
     }
     

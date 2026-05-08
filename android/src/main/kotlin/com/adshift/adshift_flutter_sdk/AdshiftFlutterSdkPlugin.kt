@@ -98,6 +98,7 @@ class AdshiftFlutterSdkPlugin :
             "isStarted" -> handleIsStarted(result)
             "setDebugEnabled" -> handleSetDebugEnabled(call, result)
             "setCustomerUserId" -> handleSetCustomerUserId(call, result)
+            "setBrandedDomains" -> handleSetBrandedDomains(call, result)
             "setAppOpenDebounceMs" -> handleSetAppOpenDebounceMs(call, result)
             "trackEvent" -> handleTrackEvent(call, result)
             "trackPurchase" -> handleTrackPurchase(call, result)
@@ -216,6 +217,25 @@ class AdshiftFlutterSdkPlugin :
 
         try {
             AdShiftLib.setCustomerUserId(userId)
+            result.success(null)
+        } catch (e: Exception) {
+            result.error("CONFIG_ERROR", e.message, null)
+        }
+    }
+
+    private fun handleSetBrandedDomains(call: MethodCall, result: Result) {
+        val args = call.arguments as? Map<*, *>
+        val rawDomains = args?.get("domains") as? List<*>
+
+        if (rawDomains == null) {
+            result.error("INVALID_ARGS", "domains list is required", null)
+            return
+        }
+
+        val domains = rawDomains.filterIsInstance<String>()
+
+        try {
+            AdShiftLib.setBrandedDomains(domains)
             result.success(null)
         } catch (e: Exception) {
             result.error("CONFIG_ERROR", e.message, null)
