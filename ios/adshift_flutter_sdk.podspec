@@ -14,8 +14,14 @@ Pod::Spec.new do |s|
   s.platform         = :ios, '15.0'
   s.swift_version    = '5.0'
 
+  # Required so CocoaPods accepts AdshiftSDK (static xcframework) as a transitive
+  # dependency in apps using `use_frameworks!` (default Flutter setup). Without
+  # this, pod install fails with: "target has transitive dependencies that
+  # include statically linked binaries: AdshiftSDK.xcframework".
+  s.static_framework = true
+
   s.dependency 'Flutter'
-  
+
   # Native AdShift iOS SDK from CocoaPods
   s.dependency 'AdshiftSDK', '~> 1.5'
 
