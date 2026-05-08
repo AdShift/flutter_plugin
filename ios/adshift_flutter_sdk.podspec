@@ -1,6 +1,6 @@
 Pod::Spec.new do |s|
   s.name             = 'adshift_flutter_sdk'
-  s.version          = '1.0.1'
+  s.version          = '1.1.0'
   s.summary          = 'AdShift SDK Flutter Plugin - Mobile Attribution & Analytics'
   s.description      = <<-DESC
     AdShift SDK Flutter Plugin enables mobile attribution, in-app event tracking,
@@ -17,7 +17,7 @@ Pod::Spec.new do |s|
   s.dependency 'Flutter'
   
   # Native AdShift iOS SDK from CocoaPods
-  s.dependency 'AdshiftSDK', '~> 1.0'
+  s.dependency 'AdshiftSDK', '~> 1.5'
 
   s.pod_target_xcconfig = { 
     'DEFINES_MODULE' => 'YES', 
