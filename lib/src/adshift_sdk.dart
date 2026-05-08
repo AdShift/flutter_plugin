@@ -260,6 +260,56 @@ class AdshiftFlutterSdk {
     );
   }
 
+  /// Logs an ad revenue event from impression-level revenue data (ILRD).
+  ///
+  /// Use this to report ad impressions from mediation platforms.
+  /// The native SDK validates the data and sends an `as_ad_revenue` event.
+  ///
+  /// Example:
+  /// ```dart
+  /// await AdshiftFlutterSdk.instance.logAdRevenue(
+  ///   monetizationNetwork: 'facebook',
+  ///   mediationNetwork: 'applovin_max',
+  ///   currency: 'USD',
+  ///   revenue: 0.0023,
+  ///   additionalParameters: {
+  ///     'as_adrev_ad_type': 'rewarded_video',
+  ///     'as_adrev_placement_id': 'level_complete',
+  ///   },
+  /// );
+  /// ```
+  Future<void> logAdRevenue({
+    required String monetizationNetwork,
+    required String mediationNetwork,
+    required String currency,
+    required double revenue,
+    Map<String, dynamic>? additionalParameters,
+  }) async {
+    _checkInitialized();
+    if (monetizationNetwork.isEmpty) {
+      throw ArgumentError('monetizationNetwork must not be empty');
+    }
+    if (mediationNetwork.isEmpty) {
+      throw ArgumentError('mediationNetwork must not be empty');
+    }
+    if (currency.length != 3) {
+      throw ArgumentError('currency must be a 3-character ISO 4217 code');
+    }
+    if (revenue.isNaN || revenue <= 0) {
+      throw ArgumentError('revenue must be a positive number');
+    }
+    if (revenue > 10.0) {
+      throw ArgumentError('revenue exceeds maximum allowed value per impression');
+    }
+    await _platform.logAdRevenue(
+      monetizationNetwork: monetizationNetwork,
+      mediationNetwork: mediationNetwork,
+      currency: currency,
+      revenue: revenue,
+      additionalParameters: additionalParameters,
+    );
+  }
+
   // ============ Consent ============
 
   /// Sets user consent data for GDPR/DMA compliance.

@@ -138,6 +138,27 @@ class MethodChannelAdshiftSdk extends AdshiftSdkPlatform {
     }
   }
 
+  @override
+  Future<void> logAdRevenue({
+    required String monetizationNetwork,
+    required String mediationNetwork,
+    required String currency,
+    required double revenue,
+    Map<String, dynamic>? additionalParameters,
+  }) async {
+    try {
+      await methodChannel.invokeMethod('logAdRevenue', {
+        'monetizationNetwork': monetizationNetwork,
+        'mediationNetwork': mediationNetwork,
+        'currency': currency,
+        'revenue': revenue,
+        'additionalParameters': additionalParameters,
+      });
+    } on PlatformException catch (e) {
+      throw _handleError('logAdRevenue', e);
+    }
+  }
+
   // ============ Consent ============
 
   @override

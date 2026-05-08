@@ -17,6 +17,8 @@ import io.flutter.plugin.common.MethodChannel.Result
 import com.adshift.sdk.core.AdShiftLib
 import com.adshift.sdk.core.AdShiftConsent
 import com.adshift.sdk.core.AdShiftRequestListener
+import com.adshift.sdk.core.ASAdRevenueData
+import com.adshift.sdk.core.ASMediationNetwork
 import com.adshift.sdk.core.deeplink.DeepLinkListener
 import com.adshift.sdk.core.deeplink.DeepLinkResult
 import com.adshift.sdk.core.deeplink.DeepLinkStatus
@@ -102,6 +104,7 @@ class AdshiftFlutterSdkPlugin :
             "setAppOpenDebounceMs" -> handleSetAppOpenDebounceMs(call, result)
             "trackEvent" -> handleTrackEvent(call, result)
             "trackPurchase" -> handleTrackPurchase(call, result)
+            "logAdRevenue" -> handleLogAdRevenue(call, result)
             "setConsentData" -> handleSetConsentData(call, result)
             "enableTCFDataCollection" -> handleEnableTCFDataCollection(call, result)
             "refreshConsent" -> handleRefreshConsent(result)
@@ -323,6 +326,43 @@ class AdshiftFlutterSdkPlugin :
                     }
                 }
             )
+        } catch (e: Exception) {
+            result.error("TRACK_ERROR", e.message, null)
+        }
+    }
+
+    private fun handleLogAdRevenue(call: MethodCall, result: Result) {
+        val args = call.arguments as? Map<*, *>
+
+        val monetizationNetwork = args?.get("monetizationNetwork") as? String
+        val mediationNetworkStr = args?.get("mediationNetwork") as? String
+        val currency = args?.get("currency") as? String
+        val revenue = args?.get("revenue") as? Double
+
+        if (monetizationNetwork.isNullOrBlank() || mediationNetworkStr.isNullOrBlank() || currency.isNullOrBlank() || revenue == null) {
+            result.error("INVALID_ARGS", "monetizationNetwork, mediationNetwork, currency, revenue are required", null)
+            return
+        }
+
+        val mediationNetwork = try {
+            ASMediationNetwork.entries.first { it.networkName == mediationNetworkStr }
+        } catch (e: NoSuchElementException) {
+            result.error("INVALID_ARGS", "Unknown mediationNetwork: $mediationNetworkStr", null)
+            return
+        }
+
+        @Suppress("UNCHECKED_CAST")
+        val additionalParameters = args?.get("additionalParameters") as? Map<String, Any>
+
+        try {
+            val adRevenueData = ASAdRevenueData(
+                monetizationNetwork = monetizationNetwork,
+                mediationNetwork = mediationNetwork,
+                currencyIso4217Code = currency,
+                revenue = revenue
+            )
+            AdShiftLib.logAdRevenue(adRevenueData, additionalParameters)
+            result.success(null)
         } catch (e: Exception) {
             result.error("TRACK_ERROR", e.message, null)
         }
