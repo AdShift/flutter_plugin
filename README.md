@@ -59,7 +59,7 @@ Add `adshift_flutter_sdk` to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  adshift_flutter_sdk: ^1.0.0
+  adshift_flutter_sdk: ^1.1.0
 ```
 
 Then run:
