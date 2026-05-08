@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-05-08
+
+### Added
+
+- `AdshiftFlutterSdk.instance.setBrandedDomains(List<String>)` — register
+  branded RightLink hostnames (e.g. `link.your-domain.com`) so the SDK treats
+  them as attribution sources alongside the default `*.rightlink.me`. Must be
+  called before `start()`. Requires also declaring the host in
+  `AndroidManifest.xml` intent-filter and the iOS Associated Domains
+  entitlement.
+- `AdshiftFlutterSdk.instance.logAdRevenue(...)` — log impression-level ad
+  revenue events for attribution and SKAdNetwork conversion value calculation.
+  Named parameters: `monetizationNetwork`, `mediationNetwork`, `currency`,
+  `revenue`, optional `additionalParameters`. Native SDK enforces a
+  $10/impression cap.
+
+### Changed
+
+- Bumped native iOS SDK constraint: `AdshiftSDK ~> 1.0` → `~> 1.5`.
+- Bumped native Android SDK pin: `com.adshift:android-sdk:2.0.3` → `2.1.0`.
+- Synced version drift in `android/build.gradle` (was lagging on `1.0.0`,
+  now `1.1.0` like `pubspec.yaml` and the iOS podspec).
+
 ## [1.0.1] - 2026-01-05
 
 ### Fixed

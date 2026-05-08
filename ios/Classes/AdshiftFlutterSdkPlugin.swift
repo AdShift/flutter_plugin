@@ -62,6 +62,9 @@ public class AdshiftFlutterSdkPlugin: NSObject, FlutterPlugin, FlutterStreamHand
         case "setCustomerUserId":
             handleSetCustomerUserId(call, result: result)
             
+        case "setBrandedDomains":
+            handleSetBrandedDomains(call, result: result)
+            
         case "setAppOpenDebounceMs":
             handleSetAppOpenDebounceMs(call, result: result)
             
@@ -70,6 +73,9 @@ public class AdshiftFlutterSdkPlugin: NSObject, FlutterPlugin, FlutterStreamHand
             
         case "trackPurchase":
             await handleTrackPurchase(call, result: result)
+            
+        case "logAdRevenue":
+            await handleLogAdRevenue(call, result: result)
             
         case "setConsentData":
             handleSetConsentData(call, result: result)
@@ -179,6 +185,18 @@ public class AdshiftFlutterSdkPlugin: NSObject, FlutterPlugin, FlutterStreamHand
     }
     
     @MainActor
+    private func handleSetBrandedDomains(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+        guard let args = call.arguments as? [String: Any],
+              let domains = args["domains"] as? [String] else {
+            result(FlutterError(code: "INVALID_ARGS", message: "domains list is required", details: nil))
+            return
+        }
+        
+        Adshift.shared.brandedDomains = domains
+        result(nil)
+    }
+    
+    @MainActor
     private func handleSetAppOpenDebounceMs(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
         guard let args = call.arguments as? [String: Any],
               let ms = args["ms"] as? Int else {
@@ -256,6 +274,43 @@ public class AdshiftFlutterSdkPlugin: NSObject, FlutterPlugin, FlutterStreamHand
         )
     }
     
+    @MainActor
+    private func handleLogAdRevenue(_ call: FlutterMethodCall, result: @escaping FlutterResult) async {
+        guard let args = call.arguments as? [String: Any],
+              let monetizationNetwork = args["monetizationNetwork"] as? String,
+              let mediationNetworkStr = args["mediationNetwork"] as? String,
+              let currency = args["currency"] as? String,
+              let revenue = args["revenue"] as? Double else {
+            result(FlutterError(
+                code: "INVALID_ARGS",
+                message: "monetizationNetwork, mediationNetwork, currency, revenue are required",
+                details: nil
+            ))
+            return
+        }
+
+        guard let mediationNetwork = ASMediationNetwork(rawValue: mediationNetworkStr) else {
+            result(FlutterError(
+                code: "INVALID_ARGS",
+                message: "Unknown mediationNetwork: \(mediationNetworkStr)",
+                details: nil
+            ))
+            return
+        }
+
+        let additionalParameters = args["additionalParameters"] as? [String: Any]
+
+        let adRevenueData = ASAdRevenueData(
+            monetizationNetwork: monetizationNetwork,
+            mediationNetwork: mediationNetwork,
+            currencyIso4217Code: currency,
+            revenue: revenue
+        )
+
+        await Adshift.shared.logAdRevenue(adRevenueData, additionalParameters: additionalParameters)
+        result(nil)
+    }
+
     // MARK: - Consent Methods
     
     @MainActor

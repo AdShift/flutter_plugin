@@ -59,7 +59,7 @@ Add `adshift_flutter_sdk` to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  adshift_flutter_sdk: ^1.0.0
+  adshift_flutter_sdk: ^1.1.0
 ```
 
 Then run:
@@ -329,6 +329,38 @@ Control how often app_open events are sent:
 ```dart
 await AdshiftFlutterSdk.instance.setAppOpenDebounceMs(5000); // 5 seconds
 ```
+
+#### Branded Domains (custom RightLink hostnames)
+
+If your campaigns use a custom domain (e.g. `link.your-domain.com`) instead of
+the default `*.rightlink.me`, you must configure the SDK so it recognises the
+branded host as an attribution source. Three things are required:
+
+1. **DNS + SSL** — set a `CNAME` from your branded host to `rightlink.me` and
+   confirm the certificate goes green in the AdShift panel.
+2. **Native manifests** — declare the same hostname in:
+   - `android/app/src/main/AndroidManifest.xml` inside the existing AdShift
+     `intent-filter` (App Links).
+   - `ios/Runner/Runner.entitlements` under `com.apple.developer.associated-domains`
+     as `applinks:link.your-domain.com`.
+   Without this the OS will never deliver the deep link to the SDK in the first
+   place — no SDK config can work around it.
+3. **SDK call** — register the host with the SDK BEFORE `start()` so the very
+   first click is attributed:
+
+```dart
+await AdshiftFlutterSdk.instance.initialize(config);
+await AdshiftFlutterSdk.instance.setBrandedDomains([
+  'link.your-domain.com',
+]);
+await AdshiftFlutterSdk.instance.start();
+```
+
+The list passed to `setBrandedDomains` must contain every branded host the app
+should treat as RightLink at the time of the first click — there is no dynamic
+refresh. Hostnames are normalised internally (lowercased, trailing dot stripped).
+Calling without this method (or with an empty list) preserves legacy behaviour
+where only `*.rightlink.me` triggers attribution.
 
 ---
 

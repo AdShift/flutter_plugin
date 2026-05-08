@@ -86,6 +86,17 @@ class MethodChannelAdshiftSdk extends AdshiftSdkPlatform {
   }
 
   @override
+  Future<void> setBrandedDomains(List<String> domains) async {
+    try {
+      await methodChannel.invokeMethod('setBrandedDomains', {
+        'domains': domains,
+      });
+    } on PlatformException catch (e) {
+      throw _handleError('setBrandedDomains', e);
+    }
+  }
+
+  @override
   Future<void> setAppOpenDebounceMs(int ms) async {
     try {
       await methodChannel.invokeMethod('setAppOpenDebounceMs', {'ms': ms});
@@ -124,6 +135,27 @@ class MethodChannelAdshiftSdk extends AdshiftSdkPlatform {
       });
     } on PlatformException catch (e) {
       throw _handleError('trackPurchase', e);
+    }
+  }
+
+  @override
+  Future<void> logAdRevenue({
+    required String monetizationNetwork,
+    required String mediationNetwork,
+    required String currency,
+    required double revenue,
+    Map<String, dynamic>? additionalParameters,
+  }) async {
+    try {
+      await methodChannel.invokeMethod('logAdRevenue', {
+        'monetizationNetwork': monetizationNetwork,
+        'mediationNetwork': mediationNetwork,
+        'currency': currency,
+        'revenue': revenue,
+        'additionalParameters': additionalParameters,
+      });
+    } on PlatformException catch (e) {
+      throw _handleError('logAdRevenue', e);
     }
   }
 

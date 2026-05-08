@@ -1,6 +1,6 @@
 Pod::Spec.new do |s|
   s.name             = 'adshift_flutter_sdk'
-  s.version          = '1.0.1'
+  s.version          = '1.1.0'
   s.summary          = 'AdShift SDK Flutter Plugin - Mobile Attribution & Analytics'
   s.description      = <<-DESC
     AdShift SDK Flutter Plugin enables mobile attribution, in-app event tracking,
@@ -14,10 +14,16 @@ Pod::Spec.new do |s|
   s.platform         = :ios, '15.0'
   s.swift_version    = '5.0'
 
+  # Required so CocoaPods accepts AdshiftSDK (static xcframework) as a transitive
+  # dependency in apps using `use_frameworks!` (default Flutter setup). Without
+  # this, pod install fails with: "target has transitive dependencies that
+  # include statically linked binaries: AdshiftSDK.xcframework".
+  s.static_framework = true
+
   s.dependency 'Flutter'
-  
+
   # Native AdShift iOS SDK from CocoaPods
-  s.dependency 'AdshiftSDK', '~> 1.0'
+  s.dependency 'AdshiftSDK', '~> 1.5'
 
   s.pod_target_xcconfig = { 
     'DEFINES_MODULE' => 'YES', 

@@ -36,6 +36,9 @@ class MockAdshiftSdkPlatform
   Future<void> setCustomerUserId(String userId) async {}
 
   @override
+  Future<void> setBrandedDomains(List<String> domains) async {}
+
+  @override
   Future<void> setAppOpenDebounceMs(int ms) async {}
 
   @override
@@ -47,6 +50,15 @@ class MockAdshiftSdkPlatform
     required double revenue,
     required String currency,
     required String transactionId,
+  }) async {}
+
+  @override
+  Future<void> logAdRevenue({
+    required String monetizationNetwork,
+    required String mediationNetwork,
+    required String currency,
+    required double revenue,
+    Map<String, dynamic>? additionalParameters,
   }) async {}
 
   @override

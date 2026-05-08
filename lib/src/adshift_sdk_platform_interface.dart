@@ -64,6 +64,12 @@ abstract class AdshiftSdkPlatform extends PlatformInterface {
     throw UnimplementedError('setCustomerUserId() has not been implemented.');
   }
 
+  /// Sets the list of branded RightLink domains the SDK should treat as
+  /// attribution sources (in addition to *.rightlink.me).
+  Future<void> setBrandedDomains(List<String> domains) {
+    throw UnimplementedError('setBrandedDomains() has not been implemented.');
+  }
+
   /// Sets the app open debounce interval in milliseconds.
   Future<void> setAppOpenDebounceMs(int ms) {
     throw UnimplementedError('setAppOpenDebounceMs() has not been implemented.');
@@ -84,6 +90,17 @@ abstract class AdshiftSdkPlatform extends PlatformInterface {
     required String transactionId,
   }) {
     throw UnimplementedError('trackPurchase() has not been implemented.');
+  }
+
+  /// Logs an ad revenue event from impression-level revenue data.
+  Future<void> logAdRevenue({
+    required String monetizationNetwork,
+    required String mediationNetwork,
+    required String currency,
+    required double revenue,
+    Map<String, dynamic>? additionalParameters,
+  }) {
+    throw UnimplementedError('logAdRevenue() has not been implemented.');
   }
 
   // ============ Consent ============
