@@ -60,11 +60,13 @@ abstract interface class Adshift {
   void setAppOpenDebounceMs(int ms);
 
   /// Sets your own link domains. Call it before [initialize], or use
-  /// [AdshiftConfig.brandedDomains]: the link that opened the app is read
-  /// during [initialize].
+  /// [AdshiftConfig.brandedDomains]: set later, they do not apply to the link
+  /// that opened the app.
   void setBrandedDomains(List<String> domains);
 
-  /// Sets the Meta app id used to parse Meta App Links. Does nothing on iOS.
+  /// Sets your Meta app id, which the SDK uses to read the Meta install
+  /// referrer for installs from Meta ads; call it before [start]. Does nothing
+  /// on iOS.
   void setMetaAppId(String appId);
 
   /// Passes an OAID the app obtained itself, for Android devices without
@@ -118,8 +120,8 @@ abstract interface class Adshift {
   /// [monetizationNetwork] is the ad network that served it, e.g. `admob`;
   /// [currency] an ISO 4217 code; [precision] what the network reported, e.g.
   /// `exact`. On iOS the keys `revenue`, `value` and `currency` in
-  /// [additionalParameters] are ignored. A successful answer means the record
-  /// was handed to the SDK, which gives no verdict on ad revenue.
+  /// [additionalParameters] are ignored. An impression above the limit also
+  /// answers success.
   Future<AdshiftResult> logAdRevenue({
     required String monetizationNetwork,
     required AdshiftMediationNetwork mediationNetwork,
@@ -136,8 +138,7 @@ abstract interface class Adshift {
 
   /// Passes a link to the SDK; not needed while
   /// [AdshiftConfig.autoHandleDeepLinks] is on. Completes at once; the result
-  /// arrives through [onDeepLink]. A link the plugin already passed to the SDK
-  /// when it arrived from the system is not counted again.
+  /// arrives through [onDeepLink]. The same tap handed over twice counts once.
   Future<void> handleDeepLink(Uri url);
 
   /// With [AdshiftDeferredDeepLinkClipboard.pasteControl], passes what the
@@ -147,8 +148,8 @@ abstract interface class Adshift {
   void handlePastedDeepLink(Uri? url);
 
   /// Adds a key path inside push payloads that carries an AdShift deep link.
-  /// Call it before [initialize], or use [AdshiftConfig.pushDeepLinkPaths]: a
-  /// notification that opened the app is read during [initialize]. The first
+  /// Call it before [initialize], or use [AdshiftConfig.pushDeepLinkPaths]:
+  /// set later, it does not apply to the notification that opened the app. The first
   /// path replaces the top-level `as_push_link` the SDK reads by default, so
   /// add that one too if you still use it. A path that leads through a JSON
   /// string works on Android only.
@@ -156,8 +157,7 @@ abstract interface class Adshift {
 
   /// Passes the payload of a push notification the user tapped. Answers true
   /// when it carried an AdShift deep link; the result then arrives through
-  /// [onDeepLink]. A notification the plugin already passed to the SDK when it
-  /// arrived from the system is not counted again.
+  /// [onDeepLink]. The same tap handed over twice counts once.
   Future<bool> handlePushNotification(Map<String, Object?> payload);
 
   /// Every deep link that reaches the SDK (direct, deferred, push), delivered
