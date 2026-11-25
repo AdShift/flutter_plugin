@@ -96,7 +96,7 @@ class ConsentTest : BridgeTest() {
     fun `answers nothing when the sdk cannot refresh the consent`() {
         every { AdShiftLib.refreshConsent(any(), any()) } throws IllegalStateException("broken")
 
-        assertNull(host.plugin.refreshConsent())
+        assertNull(dartCalls { host.plugin.refreshConsent() }.value)
     }
 
     @Test
@@ -109,6 +109,7 @@ class ConsentTest : BridgeTest() {
                 hasConsentForAdStorage = false,
             )
         )
+        idle()
         verify {
             AdShiftLib.setConsentData(
                 AdShiftConsent.forGDPRUser(
@@ -120,18 +121,22 @@ class ConsentTest : BridgeTest() {
         }
 
         host.plugin.setConsentData(ConsentMessage(isUserSubjectToGdpr = false, hasConsentForDataUsage = true))
+        idle()
         verify { AdShiftLib.setConsentData(AdShiftConsent.forNonGDPRUser()) }
     }
 
     @Test
     fun `states the sharing answer it was given`() {
         host.plugin.setThirdPartySharing(true)
+        idle()
         verify { AdShiftLib.setThirdPartySharing(AdShiftThirdPartySharing.optedOut()) }
 
         host.plugin.setThirdPartySharing(false)
+        idle()
         verify { AdShiftLib.setThirdPartySharing(AdShiftThirdPartySharing.allowed()) }
 
         host.plugin.clearThirdPartySharing()
+        idle()
         verify { AdShiftLib.clearThirdPartySharing() }
     }
 
@@ -139,6 +144,7 @@ class ConsentTest : BridgeTest() {
     fun `turns the reading of cmp consent on and off`() {
         host.plugin.enableTcfDataCollection(true)
         host.plugin.enableGppDataCollection(false)
+        idle()
 
         verify { AdShiftLib.enableTCFDataCollection(true) }
         verify { AdShiftLib.enableGPPDataCollection(false) }
@@ -149,7 +155,7 @@ class ConsentTest : BridgeTest() {
 
     private fun refreshConsent(snapshot: ConsentSnapshot): ConsentSnapshotMessage? {
         every { AdShiftLib.refreshConsent(any(), any()) } returns snapshot
-        return host.plugin.refreshConsent()
+        return dartCalls { host.plugin.refreshConsent() }.value
     }
 
     private fun snapshot(

@@ -50,4 +50,15 @@ enum BridgeRules {
   static func milliseconds(_ value: Int64) -> Int? {
     value >= 0 ? Int(min(value, Int64(Int32.max))) : nil
   }
+
+  /// The keys an ad revenue record fills from its own fields: revenue,
+  /// currency, the mediation network and the monetization network.
+  static let reservedAdRevenueKeys: Set<String> = [
+    "as_revenue", "as_currency", "as_adrev_source", "as_adrev_network_name",
+  ]
+
+  /// The additional parameters of an ad revenue record, without the reserved keys.
+  static func adRevenueParameters<Value>(_ parameters: [String: Value]) -> [String: Value] {
+    parameters.filter { !reservedAdRevenueKeys.contains($0.key) }
+  }
 }

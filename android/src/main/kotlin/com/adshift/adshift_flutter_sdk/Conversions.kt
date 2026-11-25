@@ -9,7 +9,7 @@ import com.adshift.sdk.core.deeplink.DeepLinkResult
 import com.adshift.sdk.core.deeplink.DeepLinkSource
 import com.adshift.sdk.core.deeplink.DeepLinkStatus
 
-/** The codes the SDK passes to `AdShiftRequestListener.onError`. */
+/** The codes the SDK's request listener reports. */
 internal object SdkErrorCode {
     const val OPTED_OUT = 12
     const val INVALID_API_KEY = 41

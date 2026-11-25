@@ -870,7 +870,7 @@ protocol AdshiftHostApi {
   func enableGppDataCollection(enabled: Bool) throws
   func setThirdPartySharing(optOut: Bool) throws
   func clearThirdPartySharing() throws
-  func refreshConsent() throws -> ConsentSnapshotMessage?
+  func refreshConsent() async throws -> ConsentSnapshotMessage?
   func trackEvent(name: String, values: [String: Any?]) async throws -> ErrorMessage?
   func trackPurchase(productId: String, price: Double, currency: String, token: String) async throws -> ErrorMessage?
   func logAdRevenue(data: AdRevenueMessage) async throws -> ErrorMessage?
@@ -878,7 +878,7 @@ protocol AdshiftHostApi {
   func handleDeepLink(url: String) async throws -> ErrorMessage?
   func handlePastedDeepLink(url: String?) throws
   func addPushNotificationDeepLinkPath(path: [String]) throws
-  func handlePushNotification(payload: [String: Any?]) throws -> Bool
+  func handlePushNotification(payload: [String: Any?]) async throws -> Bool
   /// Dart listens from now on: results held on the native side are sent.
   func deepLinkListenerReady() throws
 }
@@ -1098,11 +1098,13 @@ class AdshiftHostApiSetup {
     let refreshConsentChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.adshift_flutter_sdk.AdshiftHostApi.refreshConsent\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
     if let api = api {
       refreshConsentChannel.setMessageHandler { _, reply in
-        do {
-          let result = try api.refreshConsent()
-          reply(wrapResult(result))
-        } catch {
-          reply(wrapError(error))
+        Task { @MainActor in
+          do {
+            let result = try await api.refreshConsent()
+            reply(wrapResult(result))
+          } catch {
+            reply(wrapError(error))
+          }
         }
       }
     } else {
@@ -1228,11 +1230,13 @@ class AdshiftHostApiSetup {
       handlePushNotificationChannel.setMessageHandler { message, reply in
         let args = message as! [Any?]
         let payloadArg = args[0] as! [String: Any?]
-        do {
-          let result = try api.handlePushNotification(payload: payloadArg)
-          reply(wrapResult(result))
-        } catch {
-          reply(wrapError(error))
+        Task { @MainActor in
+          do {
+            let result = try await api.handlePushNotification(payload: payloadArg)
+            reply(wrapResult(result))
+          } catch {
+            reply(wrapError(error))
+          }
         }
       }
     } else {

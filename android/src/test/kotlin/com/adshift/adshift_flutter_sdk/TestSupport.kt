@@ -210,9 +210,11 @@ class FakeDart : BinaryMessenger {
 
     val links: List<String?> get() = deepLinks.map { it.deepLink }
 
-    /** Calls a bridge method that takes no arguments, through its channel as Dart does. */
-    fun call(method: String) {
-        handlers.getValue("dev.flutter.pigeon.adshift_flutter_sdk.AdshiftHostApi.$method").onMessage(null) {}
+    /** Calls a bridge method through its channel, as Dart does. */
+    fun call(method: String, vararg arguments: Any?) {
+        val message = AdshiftHostApi.codec.encodeMessage(arguments.toList())!!
+        message.flip()
+        handlers.getValue("dev.flutter.pigeon.adshift_flutter_sdk.AdshiftHostApi.$method").onMessage(message) {}
     }
 
     override fun send(channel: String, message: ByteBuffer?) = send(channel, message, null)

@@ -172,6 +172,8 @@ abstract class AdshiftHostApi {
   void enableGppDataCollection(bool enabled);
   void setThirdPartySharing(bool optOut);
   void clearThirdPartySharing();
+
+  @async
   ConsentSnapshotMessage? refreshConsent();
 
   @async
@@ -195,6 +197,8 @@ abstract class AdshiftHostApi {
 
   void handlePastedDeepLink(String? url);
   void addPushNotificationDeepLinkPath(List<String> path);
+
+  @async
   bool handlePushNotification(Map<String, Object?> payload);
 
   /// Dart listens from now on: results held on the native side are sent.

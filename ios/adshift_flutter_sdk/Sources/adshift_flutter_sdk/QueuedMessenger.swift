@@ -7,11 +7,10 @@ import Flutter
 @MainActor
 final class QueuedMessenger: NSObject, @preconcurrency FlutterBinaryMessenger {
   private let messenger: FlutterBinaryMessenger
-  private let calls: CallQueue
+  private let calls = CallQueue()
 
-  init(_ messenger: FlutterBinaryMessenger, calls: CallQueue) {
+  init(_ messenger: FlutterBinaryMessenger) {
     self.messenger = messenger
-    self.calls = calls
   }
 
   func setMessageHandlerOnChannel(
@@ -23,13 +22,8 @@ final class QueuedMessenger: NSObject, @preconcurrency FlutterBinaryMessenger {
     }
     return messenger.setMessageHandlerOnChannel(channel) { [calls] message, reply in
       calls.add { turn in
-        var hasAnswered = false
         handler(message) { answer in
-          hasAnswered = true
           reply(answer)
-        }
-        // An answer given before the handler returns means the call is done.
-        if hasAnswered {
           calls.release(turn)
         }
       }
