@@ -10,6 +10,7 @@
 #     ios-pods        CocoaPods, dynamic frameworks (Flutter's default Podfile)
 #     ios-pods-static CocoaPods, `use_frameworks! :linkage => :static`
 #     ios-pods-libs   CocoaPods, static libraries (no `use_frameworks!`)
+#     ios-device      release builds for a device, unsigned, on both paths
 #     ios-duplicate   a second copy of the SDK must stop the build on both paths
 set -euo pipefail
 
@@ -119,6 +120,16 @@ for check in "$@"; do
       esac
       build_ios "$app"
       require_file "$app/build/ios/iphonesimulator/Runner.app/AdshiftSDK.bundle/PrivacyInfo.xcprivacy"
+      ;;
+    ios-device)
+      app=$(new_app verify_ios_device_spm)
+      (cd "$app" && "$FLUTTER" build ios --release --no-codesign)
+      require_file "$app/build/ios/iphoneos/Runner.app/Frameworks/AdshiftSDK.framework/PrivacyInfo.xcprivacy"
+
+      app=$(new_app verify_ios_device_pods)
+      disable_swift_package_manager "$app"
+      (cd "$app" && "$FLUTTER" build ios --release --no-codesign)
+      require_file "$app/build/ios/iphoneos/Runner.app/AdshiftSDK.bundle/PrivacyInfo.xcprivacy"
       ;;
     ios-duplicate)
       sdk_version=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['ios']['version'])" "$PACKAGE/native_sdk.json")

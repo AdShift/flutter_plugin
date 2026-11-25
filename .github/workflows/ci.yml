@@ -154,4 +154,4 @@ jobs:
       - name: Fresh app, every way of building it
         run: >
           tool/verify_artifact.sh "$RUNNER_TEMP/package" "$(which flutter)"
-          android ios-spm ios-pods ios-pods-static ios-pods-libs ios-duplicate
+          android ios-spm ios-pods ios-pods-static ios-pods-libs ios-device ios-duplicate
