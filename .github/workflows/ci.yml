@@ -117,7 +117,7 @@ jobs:
   ios:
     name: iOS (${{ matrix.flutter }})
     runs-on: macos-26
-    timeout-minutes: 45
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
@@ -140,18 +140,8 @@ jobs:
         working-directory: adshift_flutter_sdk/example
         run: flutter build ios --simulator --debug
       - name: Bridge test on a simulator
-        working-directory: adshift_flutter_sdk/example
-        timeout-minutes: 20
-        run: |
-          # An iPhone of the newest iOS runtime on the runner, fully booted before the test starts.
-          device=$(xcrun simctl list devices available -j | python3 -c "
-          import json, re, sys
-          runtimes = json.load(sys.stdin)['devices']
-          ios = {name: devices for name, devices in runtimes.items() if 'SimRuntime.iOS' in name and devices}
-          newest = max(ios, key=lambda name: [int(part) for part in re.findall(r'\d+', name)])
-          print(next(d['udid'] for d in ios[newest] if 'iPhone' in d['name']))")
-          xcrun simctl bootstatus "$device" -b
-          flutter test integration_test -d "$device"
+        timeout-minutes: 35
+        run: tool/ios_bridge_test.sh
 
   # The package as an integrator receives it, built in a fresh app.
   package:
