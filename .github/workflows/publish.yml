@@ -1,0 +1,42 @@
+name: Publish
+
+# A version tag on main publishes to pub.dev, after the whole CI has passed and
+# the release has been approved in the `pub.dev` environment.
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+*'
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    uses: ./.github/workflows/ci.yml
+
+  publish:
+    needs: checks
+    runs-on: ubuntu-latest
+    environment: pub.dev
+    permissions:
+      contents: read
+      id-token: write # pub.dev accepts the upload on this workflow's identity
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: The tag is on main and names the pubspec version
+        run: |
+          git fetch origin main
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+          version=$(sed -n 's/^version: *//p' pubspec.yaml)
+          test "v$version" = "$GITHUB_REF_NAME"
+      - uses: dart-lang/setup-dart@2286a0c042b44434fe26d292bbce8d34f7ec662b # v1.8.2
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+          flutter-version: '3.44.x'
+      - run: flutter pub get
+      - run: dart run tool/fetch_ios_sdk.dart
+      - run: dart run tool/check_package.dart
+      - run: flutter pub publish --force
