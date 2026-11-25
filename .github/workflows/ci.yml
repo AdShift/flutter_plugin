@@ -5,99 +5,153 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_call:
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+# Flutter 3.44 builds a plugin's own example for iOS only from a directory
+# named after the plugin, so every job checks out into one.
+defaults:
+  run:
+    working-directory: adshift_flutter_sdk
+
+# Every job runs on the oldest supported Flutter and on the newest stable one.
 jobs:
-  # ============================================
-  # Analyze & Test (Dart)
-  # ============================================
-  analyze-and-test:
-    name: Analyze & Test
+  dart:
+    name: Dart (${{ matrix.flutter }})
     runs-on: ubuntu-latest
-    
+    strategy:
+      fail-fast: false
+      matrix:
+        flutter: ['3.44.x', '3.x']
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Flutter
-        uses: subosito/flutter-action@v2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          flutter-version: '3.38.5'
-          channel: 'stable'
-          cache: true
-
-      - name: Install dependencies
-        run: flutter pub get
-
-      - name: Analyze code
-        run: flutter analyze --fatal-infos
-
-      - name: Run tests
-        run: flutter test
-
-  # ============================================
-  # Build iOS
-  # ============================================
-  build-ios:
-    name: Build iOS
-    runs-on: macos-latest
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Flutter
-        uses: subosito/flutter-action@v2
+          path: adshift_flutter_sdk
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
-          flutter-version: '3.38.5'
-          channel: 'stable'
+          channel: stable
+          flutter-version: ${{ matrix.flutter }}
           cache: true
-
-      - name: Install dependencies
+      - run: flutter pub get
+      - name: Format
+        if: matrix.flutter == '3.44.x'
+        run: dart format --output=none --set-exit-if-changed lib test tool pigeon example/lib example/integration_test
+      - run: flutter analyze --fatal-infos
+      - run: flutter test
+      - name: Generated bridge is up to date
+        if: matrix.flutter == '3.44.x'
         run: |
-          flutter pub get
-          cd example && flutter pub get
+          dart run pigeon --input pigeon/messages.dart
+          dart format lib/src/messages.g.dart
+          git diff --exit-code
 
-      - name: Build iOS (no codesign)
-        run: |
-          cd example
-          flutter build ios --no-codesign --release
-
-  # ============================================
-  # Build Android
-  # ============================================
-  build-android:
-    name: Build Android
+  android:
+    name: Android (${{ matrix.flutter }})
     runs-on: ubuntu-latest
-    
+    strategy:
+      fail-fast: false
+      matrix:
+        flutter: ['3.44.x', '3.x']
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Java
-        uses: actions/setup-java@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          distribution: 'temurin'
-          java-version: '17'
-
-      - name: Setup Flutter
-        uses: subosito/flutter-action@v2
+          path: adshift_flutter_sdk
+      - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
         with:
-          flutter-version: '3.38.5'
-          channel: 'stable'
+          distribution: temurin
+          java-version: '21'
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+          flutter-version: ${{ matrix.flutter }}
           cache: true
-
-      - name: Install dependencies
+      - name: Prepare the example
+        working-directory: adshift_flutter_sdk/example
+        run: flutter build apk --config-only
+      - name: Unit tests
+        working-directory: adshift_flutter_sdk/example/android
+        run: ./gradlew :adshift_flutter_sdk:testDebugUnitTest
+      - name: Release build with code shrinking
+        working-directory: adshift_flutter_sdk/example
+        run: flutter build apk --release --target-platform android-arm64
+      - name: Let the emulator use hardware acceleration
         run: |
-          flutter pub get
-          cd example && flutter pub get
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Bridge test on an emulator
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          api-level: 35
+          arch: x86_64
+          script: cd adshift_flutter_sdk/example && flutter test integration_test
 
-      - name: Build Android APK
+  ios:
+    name: iOS (${{ matrix.flutter }})
+    runs-on: macos-26
+    strategy:
+      fail-fast: false
+      matrix:
+        flutter: ['3.44.x', '3.x']
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: adshift_flutter_sdk
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+          flutter-version: ${{ matrix.flutter }}
+          cache: true
+      - run: flutter pub get
+      - run: dart run tool/fetch_ios_sdk.dart
+      - name: Unit tests
+        if: matrix.flutter == '3.44.x'
+        run: swift test --package-path ios
+      - name: Build the example
+        working-directory: adshift_flutter_sdk/example
+        run: flutter build ios --simulator --debug
+      - name: Bridge test on a simulator
+        working-directory: adshift_flutter_sdk/example
         run: |
-          cd example
-          flutter build apk --debug
+          device=$(xcrun simctl list devices available -j | python3 -c "
+          import json, sys
+          runtimes = json.load(sys.stdin)['devices']
+          print(next(d['udid'] for name, devices in runtimes.items() if 'iOS' in name for d in devices if 'iPhone' in d['name']))")
+          xcrun simctl boot "$device"
+          flutter test integration_test -d "$device"
 
-      - name: Build Android App Bundle
-        run: |
-          cd example
-          flutter build appbundle --debug
-
+  # The package as an integrator receives it, built in a fresh app.
+  package:
+    name: Package (${{ matrix.flutter }})
+    runs-on: macos-26
+    strategy:
+      fail-fast: false
+      matrix:
+        flutter: ['3.44.x', '3.x']
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: adshift_flutter_sdk
+      - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+          flutter-version: ${{ matrix.flutter }}
+          cache: true
+      - run: flutter pub get
+      - run: dart run tool/fetch_ios_sdk.dart
+      - name: Contents
+        run: dart run tool/check_package.dart --stage "$RUNNER_TEMP/package"
+      - name: Fresh app, every way of building it
+        run: >
+          tool/verify_artifact.sh "$RUNNER_TEMP/package" "$(which flutter)"
+          android ios-spm ios-pods ios-pods-static ios-pods-libs ios-duplicate

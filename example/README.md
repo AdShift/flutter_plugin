@@ -1,16 +1,17 @@
-# adshift_flutter_sdk_example
+# AdShift Flutter plugin example
 
-Demonstrates how to use the adshift_flutter_sdk plugin.
+A small app that calls every part of the plugin and prints what comes back.
 
-## Getting Started
+```sh
+flutter run --dart-define=ADSHIFT_API_KEY=<your key>
+```
 
-This project is a starting point for a Flutter application.
+The example runs in test mode: its traffic stays out of your reports.
 
-A few resources to get you started if this is your first Flutter project:
+To try links, replace `example.rightlink.me` and the `adshiftexample` scheme in
+`android/app/src/main/AndroidManifest.xml` and `ios/Runner/Info.plist` with your
+own RightLink subdomain and scheme. On iOS, Universal Links also need the
+Associated Domains capability (`applinks:<your domain>`).
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
-
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+`flutter test integration_test` checks the platform bridge on a device or
+simulator without starting the SDK.

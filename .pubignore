@@ -1,0 +1,20 @@
+# What `dart pub publish` leaves out. This file replaces the root .gitignore
+# for publishing, so the AdShift iOS SDK (not kept in git) ships in the package.
+.dart_tool/
+.build/
+.swiftpm/
+.DS_Store
+*.iml
+/pubspec.lock
+/build/
+/coverage/
+
+# Development only.
+/test/
+/tool/
+/pigeon/
+/android/src/test/
+
+# iOS tests of the bridge rules.
+/ios/Package.swift
+/ios/Tests/

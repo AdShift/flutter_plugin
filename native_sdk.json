@@ -1,0 +1,10 @@
+{
+  "android": {
+    "version": "4.2.0"
+  },
+  "ios": {
+    "version": "3.1.0",
+    "url": "https://github.com/AdShift/ios-sdk/releases/download/v3.1.0/AdshiftSDK.xcframework.zip",
+    "sha256": "402b9e13ecd2f6d32b433b7a8c12394234ea5532787ea11032f5650b05ad837c"
+  }
+}
