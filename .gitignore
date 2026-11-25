@@ -31,3 +31,8 @@ migrate_working_dir/
 .flutter-plugins-dependencies
 /build/
 /coverage/
+
+# The AdShift iOS SDK is fetched by tool/fetch_ios_sdk.dart and ships in the
+# published package (see .pubignore); it is not kept in git.
+/ios/adshift_flutter_sdk/Frameworks/
+/ios/.build/

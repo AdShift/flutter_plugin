@@ -1,469 +1,341 @@
 package com.adshift.adshift_flutter_sdk
 
 import android.app.Activity
-import android.content.Context
+import android.app.Application
 import android.content.Intent
 import android.net.Uri
-import android.os.Handler
-import android.os.Looper
+import android.os.Bundle
+import android.util.Log
+import com.adshift.sdk.core.AdShiftConsent
+import com.adshift.sdk.core.AdShiftLib
+import com.adshift.sdk.core.AdShiftRequestListener
+import com.adshift.sdk.core.AdShiftThirdPartySharing
+import com.adshift.sdk.core.deeplink.DeepLinkResult
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.embedding.engine.plugins.activity.ActivityAware
 import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
-import io.flutter.plugin.common.EventChannel
-import io.flutter.plugin.common.MethodCall
-import io.flutter.plugin.common.MethodChannel
-import io.flutter.plugin.common.MethodChannel.MethodCallHandler
-import io.flutter.plugin.common.MethodChannel.Result
-import com.adshift.sdk.core.AdShiftLib
-import com.adshift.sdk.core.AdShiftConsent
-import com.adshift.sdk.core.AdShiftRequestListener
-import com.adshift.sdk.core.deeplink.DeepLinkListener
-import com.adshift.sdk.core.deeplink.DeepLinkResult
-import com.adshift.sdk.core.deeplink.DeepLinkStatus
+import io.flutter.plugin.common.PluginRegistry
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
- * Flutter plugin for AdShift SDK.
- *
- * Bridges Flutter method channel calls to the native AdShift Android SDK.
+ * Connects one Flutter engine to the AdShift SDK. The SDK runs once per process and answers to the
+ * engine attached to the app's Activity; in any other engine, such as one that runs Dart in the
+ * background, calls are answered without reaching the SDK.
  */
 class AdshiftFlutterSdkPlugin :
     FlutterPlugin,
-    MethodCallHandler,
     ActivityAware,
-    EventChannel.StreamHandler {
+    PluginRegistry.NewIntentListener,
+    ActivityPluginBinding.OnSaveInstanceStateListener,
+    AdshiftHostApi {
 
-    // MARK: - Properties
-    
-    private lateinit var methodChannel: MethodChannel
-    private lateinit var eventChannel: EventChannel
-    private var applicationContext: Context? = null
-    private var activity: Activity? = null
-    private var eventSink: EventChannel.EventSink? = null
-    private var deepLinkListenerRegistered = false
-    
-    // Handler for main thread operations (required by Flutter channels)
-    private val mainHandler = Handler(Looper.getMainLooper())
+    private companion object {
+        const val STATE_LAUNCH_INTENT_FORWARDED = "com.adshift.launch_intent_forwarded"
+        const val STATE_LAUNCH_PUSH_ACCEPTED = "com.adshift.launch_push_accepted"
+        const val START_VERDICT_TIMEOUT_MS = 5_000L
+    }
 
-    // MARK: - FlutterPlugin
+    private val bridge = AdshiftBridge.shared
 
-    override fun onAttachedToEngine(flutterPluginBinding: FlutterPlugin.FlutterPluginBinding) {
-        applicationContext = flutterPluginBinding.applicationContext
-        
-        // Method channel for request/response calls
-        methodChannel = MethodChannel(
-            flutterPluginBinding.binaryMessenger,
-            "com.adshift/sdk"
-        )
-        methodChannel.setMethodCallHandler(this)
-        
-        // Event channel for deep link stream
-        eventChannel = EventChannel(
-            flutterPluginBinding.binaryMessenger,
-            "com.adshift/sdk/deeplinks"
-        )
-        eventChannel.setStreamHandler(this)
+    private var flutterApi: AdshiftFlutterApi? = null
+    private var activityBinding: ActivityPluginBinding? = null
+
+    /** Whether Dart has called `deepLinkListenerReady` since its last `initialize`. */
+    private var dartListening = false
+
+    internal var intents: ActivityIntents? = null
+        private set
+
+    /** Tells when the attached Activity comes back, so that the Intents held while it was away go on. */
+    private val activityStarts = object : Application.ActivityLifecycleCallbacks {
+        override fun onActivityStarted(activity: Activity) = onStarted(activity)
+        override fun onActivityResumed(activity: Activity) = onStarted(activity)
+        override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) = Unit
+        override fun onActivityPaused(activity: Activity) = Unit
+        override fun onActivityStopped(activity: Activity) = Unit
+        override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) = Unit
+        override fun onActivityDestroyed(activity: Activity) = Unit
+    }
+
+    override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
+        flutterApi = AdshiftFlutterApi(binding.binaryMessenger)
+        AdshiftHostApi.setUp(binding.binaryMessenger, this)
     }
 
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
-        methodChannel.setMethodCallHandler(null)
-        eventChannel.setStreamHandler(null)
-        applicationContext = null
+        AdshiftHostApi.setUp(binding.binaryMessenger, null)
+        flutterApi = null
+        dartListening = false
     }
 
-    // MARK: - ActivityAware
+    override fun onAttachedToActivity(binding: ActivityPluginBinding) = attach(binding)
 
-    override fun onAttachedToActivity(binding: ActivityPluginBinding) {
-        activity = binding.activity
+    override fun onReattachedToActivityForConfigChanges(binding: ActivityPluginBinding) = attach(binding)
+
+    override fun onDetachedFromActivityForConfigChanges() = detach()
+
+    override fun onDetachedFromActivity() = detach()
+
+    private fun attach(binding: ActivityPluginBinding) {
+        activityBinding = binding
+        intents = ActivityIntents(binding.activity.intent)
+        binding.addOnNewIntentListener(this)
+        binding.addOnSaveStateListener(this)
+        binding.activity.application.registerActivityLifecycleCallbacks(activityStarts)
+        bridge.attach(this)
     }
 
-    override fun onDetachedFromActivityForConfigChanges() {
-        activity = null
-    }
-
-    override fun onReattachedToActivityForConfigChanges(binding: ActivityPluginBinding) {
-        activity = binding.activity
-    }
-
-    override fun onDetachedFromActivity() {
-        activity = null
-    }
-
-    // MARK: - MethodCallHandler
-
-    override fun onMethodCall(call: MethodCall, result: Result) {
-        when (call.method) {
-            "initialize" -> handleInitialize(call, result)
-            "start" -> handleStart(result)
-            "stop" -> handleStop(result)
-            "isStarted" -> handleIsStarted(result)
-            "setDebugEnabled" -> handleSetDebugEnabled(call, result)
-            "setCustomerUserId" -> handleSetCustomerUserId(call, result)
-            "setAppOpenDebounceMs" -> handleSetAppOpenDebounceMs(call, result)
-            "trackEvent" -> handleTrackEvent(call, result)
-            "trackPurchase" -> handleTrackPurchase(call, result)
-            "setConsentData" -> handleSetConsentData(call, result)
-            "enableTCFDataCollection" -> handleEnableTCFDataCollection(call, result)
-            "refreshConsent" -> handleRefreshConsent(result)
-            "handleDeepLink" -> handleDeepLink(call, result)
-            else -> result.notImplemented()
+    private fun detach() {
+        activityBinding?.let {
+            it.removeOnNewIntentListener(this)
+            it.removeOnSaveStateListener(this)
+            it.activity.application.unregisterActivityLifecycleCallbacks(activityStarts)
         }
+        activityBinding = null
+        intents = null
+        bridge.detach(this)
     }
 
-    // MARK: - Lifecycle Methods
-
-    private fun handleInitialize(call: MethodCall, result: Result) {
-        val context = applicationContext
-        if (context == null) {
-            result.error("NO_CONTEXT", "Application context not available", null)
-            return
+    /** Flutter calls this while the Activity is created; [bundle] is null unless it is re-created. */
+    override fun onRestoreInstanceState(bundle: Bundle?) {
+        val launch = intents?.launchIntent
+        if (launch != null && bundle?.getBoolean(STATE_LAUNCH_INTENT_FORWARDED) == true) {
+            intents?.forwarded(launch, bundle.getBoolean(STATE_LAUNCH_PUSH_ACCEPTED))
         }
+        bridge.forwardWaitingIntents(this)
+    }
 
-        val args = call.arguments as? Map<*, *>
-        val apiKey = args?.get("apiKey") as? String
-        
-        if (apiKey.isNullOrBlank()) {
-            result.error("INVALID_ARGS", "apiKey is required", null)
-            return
-        }
+    override fun onSaveInstanceState(bundle: Bundle) {
+        val intents = intents ?: return
+        bundle.putBoolean(STATE_LAUNCH_INTENT_FORWARDED, intents.launchForwarded)
+        bundle.putBoolean(STATE_LAUNCH_PUSH_ACCEPTED, intents.launchPushAccepted)
+        intents.stateSaved = true
+    }
 
-        try {
-            // Initialize SDK
-            AdShiftLib.initSdk(context, apiKey)
-            
-            // Apply optional configuration
-            val isDebug = args["isDebug"] as? Boolean
-            if (isDebug != null) {
-                AdShiftLib.setDebugLog(isDebug)
+    private fun onStarted(activity: Activity) {
+        if (activity !== activityBinding?.activity) return
+        intents?.stateSaved = false
+        bridge.forwardWaitingIntents(this)
+    }
+
+    /** Returns false: the Intent stays available to the app and to other plugins. */
+    override fun onNewIntent(intent: Intent): Boolean {
+        bridge.onNewIntent(this, intent)
+        return false
+    }
+
+    /** Sends [result] to Dart; false when Dart does not listen, so that the result is kept. */
+    internal fun send(result: DeepLinkResult): Boolean {
+        val api = flutterApi?.takeIf { dartListening } ?: return false
+        bridge.scope.launch(Dispatchers.Main.immediate) {
+            try {
+                api.onDeepLink(result.toMessage())
+            } catch (e: Exception) {
+                Log.w(AdshiftBridge.TAG, "onDeepLink failed: ${e.javaClass.simpleName}")
             }
-            
-            val appOpenDebounceMs = args["appOpenDebounceMs"] as? Int
-            if (appOpenDebounceMs != null) {
-                AdShiftLib.setAppOpenDebounceMs(appOpenDebounceMs.toLong())
-            }
-            
-            val collectOaid = args["collectOaid"] as? Boolean
-            if (collectOaid != null) {
-                AdShiftLib.setCollectOaid(collectOaid)
-            }
-            
-            result.success(null)
-        } catch (e: Exception) {
-            result.error("INIT_ERROR", e.message, null)
         }
+        return true
     }
 
-    private fun handleStart(result: Result) {
+    override fun deepLinkListenerReady() {
+        dartListening = true
+        bridge.sendHeldResults()
+    }
+
+    override fun initialize(options: InitializeMessage): ErrorMessage? {
+        // Dart has started, or started over: results wait until it says that it listens.
+        dartListening = false
+        val activity = activityBinding?.activity
+        if (activity == null || !bridge.isOwner(this)) return notOwner()
+        return bridge.initialize(options, activity.applicationContext)
+    }
+
+    /**
+     * Waits up to [START_VERDICT_TIMEOUT_MS] for the answer on the API key; without one, answers
+     * started with the key pending.
+     */
+    override suspend fun start(): StartMessage {
+        refusal()?.let { return StartMessage(success = false, error = it) }
+        val verdict = CompletableDeferred<StartMessage>()
         try {
             AdShiftLib.start(object : AdShiftRequestListener {
                 override fun onSuccess() {
-                    result.success(null)
+                    verdict.complete(StartMessage(success = true, keyStatus = KeyStatusMessage.VALID))
                 }
 
                 override fun onError(code: Int, error: String) {
-                    result.error("START_ERROR", error, code.toString())
+                    verdict.complete(
+                        StartMessage(
+                            success = false,
+                            keyStatus = KeyStatusMessage.INVALID.takeIf { code == SdkErrorCode.INVALID_API_KEY },
+                            error = sdkError(code, error),
+                        )
+                    )
                 }
             })
         } catch (e: Exception) {
-            result.error("START_ERROR", e.message, null)
+            return StartMessage(success = false, error = thrownError(e))
         }
+        return withTimeoutOrNull(START_VERDICT_TIMEOUT_MS) { verdict.await() }
+            ?: StartMessage(success = true, keyStatus = KeyStatusMessage.PENDING)
     }
 
-    private fun handleStop(result: Result) {
-        try {
-            AdShiftLib.stop()
-            result.success(null)
-        } catch (e: Exception) {
-            result.error("STOP_ERROR", e.message, null)
-        }
+    override fun stop() {
+        if (refusal() != null) return
+        // Queued behind a `start` called earlier, which Flutter runs in a later turn of the main thread.
+        bridge.scope.launch { sdk("stop") { AdShiftLib.stop() } }
     }
 
-    private fun handleIsStarted(result: Result) {
-        try {
-            val isStarted = AdShiftLib.isStarted()
-            result.success(isStarted)
-        } catch (e: Exception) {
-            result.success(false)
-        }
+    override fun setCustomerUserId(userId: String) = sdk("setCustomerUserId") {
+        AdShiftLib.setCustomerUserId(userId)
     }
 
-    // MARK: - Configuration Methods
-
-    private fun handleSetDebugEnabled(call: MethodCall, result: Result) {
-        val args = call.arguments as? Map<*, *>
-        val enabled = args?.get("enabled") as? Boolean
-        
-        if (enabled == null) {
-            result.error("INVALID_ARGS", "enabled is required", null)
-            return
-        }
-
-        try {
-            AdShiftLib.setDebugLog(enabled)
-            result.success(null)
-        } catch (e: Exception) {
-            result.error("CONFIG_ERROR", e.message, null)
-        }
+    override fun setDebugEnabled(enabled: Boolean) = sdk("setDebugEnabled") {
+        AdShiftLib.setDebugLog(enabled)
     }
 
-    private fun handleSetCustomerUserId(call: MethodCall, result: Result) {
-        val args = call.arguments as? Map<*, *>
-        val userId = args?.get("userId") as? String
-        
-        if (userId.isNullOrBlank()) {
-            result.error("INVALID_ARGS", "userId is required", null)
-            return
-        }
-
-        try {
-            AdShiftLib.setCustomerUserId(userId)
-            result.success(null)
-        } catch (e: Exception) {
-            result.error("CONFIG_ERROR", e.message, null)
-        }
+    override fun setAppOpenDebounceMs(ms: Long) = sdk("setAppOpenDebounceMs") {
+        AdShiftLib.setAppOpenDebounceMs(ms)
     }
 
-    private fun handleSetAppOpenDebounceMs(call: MethodCall, result: Result) {
-        val args = call.arguments as? Map<*, *>
-        val ms = args?.get("ms") as? Int
-        
-        if (ms == null) {
-            result.error("INVALID_ARGS", "ms is required", null)
-            return
-        }
-
-        try {
-            AdShiftLib.setAppOpenDebounceMs(ms.toLong())
-            result.success(null)
-        } catch (e: Exception) {
-            result.error("CONFIG_ERROR", e.message, null)
-        }
+    override fun setBrandedDomains(domains: List<String>) = sdk("setBrandedDomains") {
+        AdShiftLib.setBrandedDomains(domains.filter { it.isNotBlank() })
     }
 
-    // MARK: - Event Tracking Methods
-
-    private fun handleTrackEvent(call: MethodCall, result: Result) {
-        val args = call.arguments as? Map<*, *>
-        val eventName = args?.get("eventName") as? String
-        
-        if (eventName.isNullOrBlank()) {
-            result.error("INVALID_ARGS", "eventName is required", null)
-            return
-        }
-
-        @Suppress("UNCHECKED_CAST")
-        val values = (args["values"] as? Map<String, Any>) ?: emptyMap()
-
-        try {
-            AdShiftLib.trackEvent(
-                eventName = eventName,
-                eventValue = values,
-                listener = object : AdShiftRequestListener {
-                    override fun onSuccess() {
-                        result.success(null)
-                    }
-
-                    override fun onError(code: Int, error: String) {
-                        result.error("TRACK_ERROR", error, code.toString())
-                    }
-                }
-            )
-        } catch (e: Exception) {
-            result.error("TRACK_ERROR", e.message, null)
-        }
+    override fun setMetaAppId(appId: String) = sdk("setMetaAppId") {
+        AdShiftLib.setMetaAppId(appId)
     }
 
-    private fun handleTrackPurchase(call: MethodCall, result: Result) {
-        val args = call.arguments as? Map<*, *>
-        
-        val productId = args?.get("productId") as? String
-        val revenue = args?.get("revenue") as? Double
-        val currency = args?.get("currency") as? String
-        val transactionId = args?.get("transactionId") as? String
-        
-        if (productId.isNullOrBlank() || revenue == null || currency.isNullOrBlank() || transactionId.isNullOrBlank()) {
-            result.error("INVALID_ARGS", "productId, revenue, currency, transactionId are required", null)
-            return
-        }
-
-        try {
-            // IMPORTANT: Native SDK uses "price" parameter name
-            // We receive "revenue" from Flutter and pass it as price
-            AdShiftLib.trackPurchase(
-                productId = productId,
-                price = revenue,
-                currency = currency,
-                token = transactionId,
-                listener = object : AdShiftRequestListener {
-                    override fun onSuccess() {
-                        result.success(null)
-                    }
-
-                    override fun onError(code: Int, error: String) {
-                        result.error("TRACK_ERROR", error, code.toString())
-                    }
-                }
-            )
-        } catch (e: Exception) {
-            result.error("TRACK_ERROR", e.message, null)
-        }
+    override fun setOaidData(oaid: String) = sdk("setOaidData") {
+        AdShiftLib.setOaidData(oaid)
     }
 
-    // MARK: - Consent Methods
-
-    private fun handleSetConsentData(call: MethodCall, result: Result) {
-        val args = call.arguments as? Map<*, *>
-        if (args == null) {
-            result.error("INVALID_ARGS", "consent data is required", null)
-            return
-        }
-
-        try {
-            val consent = mapToAdShiftConsent(args)
-            AdShiftLib.setConsentData(consent)
-            result.success(null)
-        } catch (e: Exception) {
-            result.error("CONSENT_ERROR", e.message, null)
-        }
-    }
-
-    private fun handleEnableTCFDataCollection(call: MethodCall, result: Result) {
-        val args = call.arguments as? Map<*, *>
-        val enabled = args?.get("enabled") as? Boolean
-        
-        if (enabled == null) {
-            result.error("INVALID_ARGS", "enabled is required", null)
-            return
-        }
-
-        try {
-            AdShiftLib.enableTCFDataCollection(enabled)
-            result.success(null)
-        } catch (e: Exception) {
-            result.error("CONFIG_ERROR", e.message, null)
-        }
-    }
-
-    private fun handleRefreshConsent(result: Result) {
-        try {
-            AdShiftLib.refreshConsent()
-            result.success(null)
-        } catch (e: Exception) {
-            result.error("CONSENT_ERROR", e.message, null)
-        }
-    }
-
-    // MARK: - Deep Link Methods
-
-    private fun handleDeepLink(call: MethodCall, result: Result) {
-        val args = call.arguments as? Map<*, *>
-        val urlString = args?.get("url") as? String
-        
-        if (urlString.isNullOrBlank()) {
-            result.error("INVALID_ARGS", "url is required", null)
-            return
-        }
-
-        try {
-            val uri = Uri.parse(urlString)
-            val intent = Intent(Intent.ACTION_VIEW, uri)
-            
-            // Register one-time listener for this specific call
-            AdShiftLib.setDeepLinkListener(object : DeepLinkListener {
-                override fun onDeepLinking(deepLinkResult: DeepLinkResult) {
-                    val responseMap = mapDeepLinkResultToMap(deepLinkResult)
-                    // Callback may be on background thread, post to main
-                    mainHandler.post {
-                        result.success(responseMap)
-                    }
-                }
-            })
-            
-            AdShiftLib.handleAppLinkIntent(intent)
-        } catch (e: Exception) {
-            result.success(mapOf(
-                "status" to "error",
-                "errorMessage" to (e.message ?: "Unknown error")
-            ))
-        }
-    }
-
-    // MARK: - EventChannel.StreamHandler (Deep Link Events)
-
-    override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
-        eventSink = events
-        
-        // Register deep link listener with native SDK
-        if (!deepLinkListenerRegistered) {
-            try {
-                AdShiftLib.setDeepLinkListener(object : DeepLinkListener {
-                    override fun onDeepLinking(deepLinkResult: DeepLinkResult) {
-                        val responseMap = mapDeepLinkResultToMap(deepLinkResult)
-                        // Must call eventSink on main thread
-                        mainHandler.post {
-                            eventSink?.success(responseMap)
-                        }
-                    }
-                })
-                deepLinkListenerRegistered = true
-            } catch (e: Exception) {
-                // SDK might not be initialized yet, that's ok
+    override fun setConsentData(consent: ConsentMessage) = sdk("setConsentData") {
+        AdShiftLib.setConsentData(
+            if (consent.isUserSubjectToGdpr) {
+                AdShiftConsent.forGDPRUser(
+                    hasConsentForDataUsage = consent.hasConsentForDataUsage,
+                    hasConsentForAdsPersonalization = consent.hasConsentForAdsPersonalization,
+                    hasConsentForAdStorage = consent.hasConsentForAdStorage,
+                )
+            } else {
+                AdShiftConsent.forNonGDPRUser()
             }
-        }
-    }
-
-    override fun onCancel(arguments: Any?) {
-        eventSink = null
-    }
-
-    // MARK: - Mappers
-
-    /**
-     * Maps Flutter consent map to native AdShiftConsent
-     */
-    private fun mapToAdShiftConsent(args: Map<*, *>): AdShiftConsent {
-        val isGDPR = args["isUserSubjectToGDPR"] as? Boolean ?: false
-        val dataUsage = args["hasConsentForDataUsage"] as? Boolean ?: false
-        val personalization = args["hasConsentForAdsPersonalization"] as? Boolean ?: false
-        val storage = args["hasConsentForAdStorage"] as? Boolean ?: false
-
-        return if (isGDPR) {
-            AdShiftConsent.forGDPRUser(
-                hasConsentForDataUsage = dataUsage,
-                hasConsentForAdsPersonalization = personalization,
-                hasConsentForAdStorage = storage
-            )
-        } else {
-            AdShiftConsent.forNonGDPRUser()
-        }
-    }
-
-    /**
-     * Maps native DeepLinkResult to Flutter map
-     */
-    private fun mapDeepLinkResultToMap(result: DeepLinkResult): Map<String, Any?> {
-        val params = mutableMapOf<String, String>()
-        
-        result.queryParams?.let { params.putAll(it) }
-        result.sub1?.let { params["deep_link_sub1"] = it }
-        result.sub2?.let { params["deep_link_sub2"] = it }
-        result.sub3?.let { params["deep_link_sub3"] = it }
-        result.sub4?.let { params["deep_link_sub4"] = it }
-        result.sub5?.let { params["deep_link_sub5"] = it }
-
-        val statusString = when (result.status) {
-            DeepLinkStatus.FOUND -> "found"
-            DeepLinkStatus.NOT_FOUND -> "notFound"
-            DeepLinkStatus.ERROR -> "error"
-        }
-
-        val errorMessage = result.error?.name?.lowercase()?.replace("_", " ")
-
-        return mapOf(
-            "deepLink" to result.uri?.toString(),
-            "params" to if (params.isEmpty()) null else params,
-            "isDeferred" to result.isDeferred,
-            "status" to statusString,
-            "errorMessage" to errorMessage
         )
+    }
+
+    override fun enableTcfDataCollection(enabled: Boolean) = sdk("enableTcfDataCollection") {
+        AdShiftLib.enableTCFDataCollection(enabled)
+    }
+
+    override fun enableGppDataCollection(enabled: Boolean) = sdk("enableGppDataCollection") {
+        AdShiftLib.enableGPPDataCollection(enabled)
+    }
+
+    override fun setThirdPartySharing(optOut: Boolean) = sdk("setThirdPartySharing") {
+        AdShiftLib.setThirdPartySharing(
+            if (optOut) AdShiftThirdPartySharing.optedOut() else AdShiftThirdPartySharing.allowed()
+        )
+    }
+
+    override fun clearThirdPartySharing() = sdk("clearThirdPartySharing") {
+        AdShiftLib.clearThirdPartySharing()
+    }
+
+    override fun refreshConsent(): ConsentSnapshotMessage? = sdk("refreshConsent", null) {
+        AdShiftLib.refreshConsent().toMessage()
+    }
+
+    override suspend fun trackEvent(name: String, values: Map<String, Any?>): ErrorMessage? =
+        track { listener -> AdShiftLib.trackEvent(name, values.withoutNulls(), listener) }
+
+    override suspend fun trackPurchase(
+        productId: String,
+        price: Double,
+        currency: String,
+        token: String,
+    ): ErrorMessage? =
+        track { listener -> AdShiftLib.trackPurchase(productId, price, currency, token, listener) }
+
+    /** Answers once the SDK has taken the event into its queue, or refused it. */
+    private suspend fun track(call: (AdShiftRequestListener) -> Unit): ErrorMessage? {
+        refusal()?.let { return it }
+        val answer = CompletableDeferred<ErrorMessage?>()
+        try {
+            call(object : AdShiftRequestListener {
+                override fun onSuccess() {
+                    answer.complete(null)
+                }
+
+                override fun onError(code: Int, error: String) {
+                    answer.complete(sdkError(code, error))
+                }
+            })
+        } catch (e: Exception) {
+            return thrownError(e)
+        }
+        return answer.await()
+    }
+
+    override suspend fun logAdRevenue(data: AdRevenueMessage): ErrorMessage? {
+        refusal()?.let { return it }
+        return try {
+            AdShiftLib.logAdRevenue(data.toSdkData(), data.toSdkParameters())
+            null
+        } catch (e: Exception) {
+            thrownError(e)
+        }
+    }
+
+    override fun getAdShiftDeviceId(): String? = sdk("getAdShiftDeviceId", null) {
+        AdShiftLib.getAdShiftDeviceId()
+    }
+
+    override suspend fun handleDeepLink(url: String): ErrorMessage? {
+        val uri = Uri.parse(url)
+        val scheme = uri.scheme
+        val isWeb = scheme.equals("http", ignoreCase = true) || scheme.equals("https", ignoreCase = true)
+        if (scheme.isNullOrEmpty() || (isWeb && uri.host.isNullOrEmpty())) {
+            return ErrorMessage(ErrorCodeMessage.INVALID_ARGUMENT, "url must be an absolute URL")
+        }
+        refusal()?.let { return it }
+        return bridge.forwardLink(this, url, uri)
+    }
+
+    /** The clipboard lookup of a deferred link exists on iOS only. */
+    override fun handlePastedDeepLink(url: String?) = Unit
+
+    override fun addPushNotificationDeepLinkPath(path: List<String>) =
+        sdk("addPushNotificationDeepLinkPath") { bridge.registerPushPath(path) }
+
+    override fun handlePushNotification(payload: Map<String, Any?>): Boolean =
+        sdk("handlePushNotification", false) { bridge.forwardPush(this, payload) }
+
+    /** Why this instance may not call the SDK now, or null when it may. */
+    private fun refusal(): ErrorMessage? = when {
+        !bridge.isOwner(this) -> notOwner()
+        !bridge.sdkInitialized -> ErrorMessage(ErrorCodeMessage.NOT_INITIALIZED, "initialize() has not been called")
+        else -> null
+    }
+
+    private fun notOwner() = ErrorMessage(
+        ErrorCodeMessage.NOT_INITIALIZED,
+        "The SDK runs only in the Flutter engine attached to the app's Activity",
+    )
+
+    private inline fun sdk(method: String, call: () -> Unit) = sdk(method, Unit, call)
+
+    /** Runs [call] when this instance may call the SDK; [otherwise] also stands in for a failure. */
+    private inline fun <T> sdk(method: String, otherwise: T, call: () -> T): T {
+        if (refusal() != null) return otherwise
+        return try {
+            call()
+        } catch (e: Exception) {
+            Log.w(AdshiftBridge.TAG, "$method failed: ${e.javaClass.simpleName}: ${e.message}")
+            otherwise
+        }
     }
 }
