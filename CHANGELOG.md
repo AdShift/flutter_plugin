@@ -38,8 +38,8 @@ Breaking release on Android SDK 4.2.0 and iOS SDK 3.1.0, not source-compatible w
 - `AdshiftFlutterSdk` is now `Adshift`, and `onDeepLinkReceived` is `onDeepLink`.
 - **No call throws, and no returned `Future` completes with an error.** `start()` and the tracking calls answer with a result; every other problem is reported to `AdshiftConfig.onError`.
 - `initialize()`, `stop()`, `setCustomerUserId()`, `setDebugEnabled()`, `setAppOpenDebounceMs()`, `setConsentData()` and `enableTCFDataCollection()` return nothing instead of a `Future`. `isStarted` is a getter.
-- `start()` returns `AdshiftStartResult`. On Android it waits up to 5 seconds for the check of the API key, so do not await it before the first frame, and a rejected key fails it with `INVALID_API_KEY`. On iOS it answers before the key is checked, usually with `pending`, so a rejected key is usually not reported to the app. A device with tracking turned off answers `OPTED_OUT`.
-- `trackEvent()` and `trackPurchase()` return `AdshiftResult`. Success means the SDK accepted the event into its queue. `values` is a `Map<String, Object>` of strings, numbers and booleans. The names `app_install` and `app_open` are refused.
+- `start()` returns `AdshiftStartResult`. On Android the answer can take up to 5 seconds, so do not await it before the first frame, and a rejected key fails it with `INVALID_API_KEY`. On iOS it usually answers `pending`, so a rejected key is usually not reported to the app. A device with tracking turned off answers `OPTED_OUT`.
+- `trackEvent()` and `trackPurchase()` return `AdshiftResult`. Success means the SDK accepted the event, not that it was delivered yet. `values` is a `Map<String, Object>` of strings, numbers and booleans. The names `app_install` and `app_open` are refused.
 - `handleDeepLink()` completes at once and carries no result; every result arrives through `onDeepLink`, each one once. Results that arrive while nobody listens wait for the next listener.
 - **Navigate only on `found`.** `found` now means a RightLink link (your `*.rightlink.me` host or a domain in `brandedDomains`) or a deferred deep link with a value. Any other URL, your app's own scheme included, comes back `notFound` with the URL in `deepLink` and no `params`.
 - A short link that cannot be resolved yet comes as `error`, and `found` follows once it resolves.
@@ -47,7 +47,6 @@ Breaking release on Android SDK 4.2.0 and iOS SDK 3.1.0, not source-compatible w
 - `AdshiftDeepLink.params` is a `Map<String, String>`.
 - Consent flags have three states: `true`, `false` and not decided. `AdshiftConsent.forGDPRUser()` takes each flag optionally, `isConsentGranted()` needs an explicit `true` for data usage and ad storage, and `AdshiftConsent.forNonGDPRUser()` no longer reports the flags as granted.
 - `refreshConsent()` returns the consent snapshot.
-- An option left out of `AdshiftConfig` keeps the native SDK's default; `isDebug` and `appOpenDebounceMs` no longer have defaults of their own.
 - `initialize()` keeps the first config; later calls are ignored.
 - Only the Flutter engine that shows the app's UI can use the plugin. In another engine, such as a background message handler, calls do nothing and `start()` answers `NOT_INITIALIZED`.
 - Minimum Flutter 3.44 and Dart 3.12; Android API 24 with `compileSdk` 35; iOS 15.0 with Xcode 16.1.

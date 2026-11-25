@@ -52,10 +52,8 @@ final class AdshiftStartResult {
 
 /// The answer of `trackEvent()`, `trackPurchase()` and `logAdRevenue()`.
 ///
-/// For an event or a purchase, success means the SDK accepted the call into
-/// its queue, not that the data was delivered. For ad revenue it means the
-/// record was handed to the SDK, which gives no verdict on it: the answer is a
-/// success also on a device with tracking turned off.
+/// Success means the SDK accepted the call, not that the data was delivered
+/// yet. For ad revenue, an impression above the limit also answers success.
 final class AdshiftResult {
   /// The call was accepted.
   const AdshiftResult.success() : error = null;

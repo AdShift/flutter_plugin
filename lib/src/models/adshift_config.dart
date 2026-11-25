@@ -54,7 +54,8 @@ final class AdshiftConfig {
   /// reports. A debug build does not turn it on. Default: off.
   final bool? testMode;
 
-  /// Meta app id used to parse Meta App Links. Android only.
+  /// Your Meta app id, which the SDK uses to read the Meta install referrer
+  /// for installs from Meta ads. Android only.
   final String? metaAppId;
 
   /// Key paths inside a push notification payload that carry an AdShift deep
