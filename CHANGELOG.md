@@ -26,7 +26,7 @@ Breaking release on Android SDK 4.2.0 and iOS SDK 3.1.0, not source-compatible w
 - iOS: the deferred deep link from the clipboard, for RightLink templates with the clipboard option: `AdshiftConfig.deferredDeepLinkClipboard` and `handlePastedDeepLink()`.
 - Push notification links: `handlePushNotification()`, `addPushNotificationDeepLinkPath()` and `AdshiftConfig.pushDeepLinkPaths`.
 - Consent: `enableGPPDataCollection()`, `setThirdPartySharing()` and `clearThirdPartySharing()` with `AdshiftThirdPartySharing`, and `AdshiftConsentSnapshot` returned by `refreshConsent()`, with `adIdentifiersAllowed` and `cmpDetected`.
-- `AdshiftConfig.testMode`: marks every click and event as test traffic, kept out of reports, postbacks and billing.
+- `AdshiftConfig.testMode`: marks every click and event as test traffic, kept out of your reports.
 - `getAdShiftDeviceId()`, `getInfo()` and the constant `adshiftPluginVersion`.
 - Android: `AdshiftConfig.metaAppId` and `setMetaAppId()`; `setOaidData()` for an OAID the app obtained itself.
 - `package:adshift_flutter_sdk/testing.dart` with `AdshiftFake`, a stand-in for the SDK in your own tests.
@@ -38,7 +38,7 @@ Breaking release on Android SDK 4.2.0 and iOS SDK 3.1.0, not source-compatible w
 - `AdshiftFlutterSdk` is now `Adshift`, and `onDeepLinkReceived` is `onDeepLink`.
 - **No call throws, and no returned `Future` completes with an error.** `start()` and the tracking calls answer with a result; every other problem is reported to `AdshiftConfig.onError`.
 - `initialize()`, `stop()`, `setCustomerUserId()`, `setDebugEnabled()`, `setAppOpenDebounceMs()`, `setConsentData()` and `enableTCFDataCollection()` return nothing instead of a `Future`. `isStarted` is a getter.
-- `start()` returns `AdshiftStartResult`. On Android it waits up to 5 seconds for the check of the API key, so do not await it before the first frame, and a rejected key fails it with `INVALID_API_KEY`. On iOS it answers before the key is checked, usually with `pending`, and a rejected key is not reported to the app. A device with tracking turned off answers `OPTED_OUT`.
+- `start()` returns `AdshiftStartResult`. On Android it waits up to 5 seconds for the check of the API key, so do not await it before the first frame, and a rejected key fails it with `INVALID_API_KEY`. On iOS it answers before the key is checked, usually with `pending`, so a rejected key is usually not reported to the app. A device with tracking turned off answers `OPTED_OUT`.
 - `trackEvent()` and `trackPurchase()` return `AdshiftResult`. Success means the SDK accepted the event into its queue. `values` is a `Map<String, Object>` of strings, numbers and booleans. The names `app_install` and `app_open` are refused.
 - `handleDeepLink()` completes at once and carries no result; every result arrives through `onDeepLink`, each one once. Results that arrive while nobody listens wait for the next listener.
 - **Navigate only on `found`.** `found` now means a RightLink link (your `*.rightlink.me` host or a domain in `brandedDomains`) or a deferred deep link with a value. Any other URL, your app's own scheme included, comes back `notFound` with the URL in `deepLink` and no `params`.

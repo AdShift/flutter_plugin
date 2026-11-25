@@ -7,7 +7,7 @@ enum AdshiftErrorCode {
   notStarted('NOT_STARTED'),
 
   /// The API key was rejected. Android answers `start()` with it; on iOS a
-  /// rejected key is not reported to the app.
+  /// rejected key is usually not reported to the app.
   invalidApiKey('INVALID_API_KEY'),
 
   /// Tracking is turned off for this device.

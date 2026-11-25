@@ -19,9 +19,11 @@ enum AdshiftApiKeyValidationStatus {
 ///
 /// [success] says whether the SDK started on the device. A rejected API key
 /// shows differently on each platform. On Android `start()` fails with
-/// `INVALID_API_KEY`. On iOS `start()` usually answers `pending` and a
-/// rejected key is not reported to the app, so check the debug log while
-/// integrating.
+/// `INVALID_API_KEY`. On iOS `start()` usually answers `pending`, so a rejected
+/// key is usually not reported to the app: check the debug log while
+/// integrating. It is reported, as `invalid` here and as `INVALID_API_KEY` to
+/// `AdshiftConfig.onError`, when the SDK already knows the verdict, for
+/// example at a `start()` after `stop()` in the same run.
 final class AdshiftStartResult {
   /// The SDK started.
   const AdshiftStartResult.success({this.apiKeyValidationStatus})
@@ -50,8 +52,10 @@ final class AdshiftStartResult {
 
 /// The answer of `trackEvent()`, `trackPurchase()` and `logAdRevenue()`.
 ///
-/// Success means the SDK accepted the call into its queue, not that the data
-/// was delivered.
+/// For an event or a purchase, success means the SDK accepted the call into
+/// its queue, not that the data was delivered. For ad revenue it means the
+/// record was handed to the SDK, which gives no verdict on it: the answer is a
+/// success also on a device with tracking turned off.
 final class AdshiftResult {
   /// The call was accepted.
   const AdshiftResult.success() : error = null;
