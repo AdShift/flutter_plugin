@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 | 1.0.1 | 2.0.3 | 1.x |
 | 1.0.0 | 2.0.3 | 1.x |
 
-## [2.0.0-rc.1]
+## [2.0.0] - 2026-11-25
 
 Breaking release on Android SDK 4.2.0 and iOS SDK 3.1.0, not source-compatible with 1.x. See "Upgrading from 1.x" in the README.
 
