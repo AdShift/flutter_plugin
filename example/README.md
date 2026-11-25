@@ -1,6 +1,6 @@
 # AdShift Flutter plugin example
 
-A small app that calls every part of the plugin and prints what comes back.
+A small app that calls the main parts of the plugin and prints what comes back.
 
 ```sh
 flutter run --dart-define=ADSHIFT_API_KEY=<your key>

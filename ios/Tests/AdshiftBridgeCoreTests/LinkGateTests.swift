@@ -152,6 +152,95 @@ final class LinkGateTests: XCTestCase {
 
     XCTAssertTrue(gate.admitFromSystem("tap", url: link, at: 5))
   }
+
+  // MARK: A delivered link passed by the app
+
+  /// The app reads the link it was opened with long after the launch, for
+  /// example once the user has signed in.
+  func testForwardedLinkPassedByTheAppMuchLaterCountsOnce() {
+    var gate = openGate()
+
+    XCTAssertTrue(gate.admitFromSystem("tap", url: link, at: 5))
+    XCTAssertFalse(gate.admitFromApp(url: link, at: 17))
+    XCTAssertFalse(gate.admitFromApp(url: link, at: 3600))
+  }
+
+  func testHeldLinkPassedByTheAppMuchLaterCountsOnce() {
+    var gate = LinkGate<String>()
+    _ = gate.admitFromSystem("launch", url: link, at: 0)
+    _ = gate.open(forwardsSystemLinks: true, at: 10)
+
+    XCTAssertFalse(gate.admitFromApp(url: link, at: 22))
+  }
+
+  func testLinkDeliveredAgainMinutesLaterIsANewTap() {
+    var gate = openGate()
+
+    XCTAssertTrue(gate.admitFromSystem("tap", url: link, at: 5))
+    XCTAssertTrue(gate.admitFromSystem("tap again", url: link, at: 305))
+    XCTAssertFalse(gate.admitFromApp(url: link, at: 320))
+  }
+
+  func testLinkTheAppPassedFirstIsNotForwardedWhenIosDeliversIt() {
+    var gate = openGate()
+
+    XCTAssertTrue(gate.admitFromApp(url: link, at: 5))
+    XCTAssertFalse(gate.admitFromSystem("tap", url: link, at: 5.5))
+    XCTAssertFalse(gate.admitFromApp(url: link, at: 60))
+  }
+
+  func testOnlyTheLatestLinksAreRemembered() {
+    var gate = LinkGate<Int>()
+    _ = gate.open(forwardsSystemLinks: true, at: 0)
+    let count = LinkGate<Int>.memoryLimit + 1
+    for index in 0..<count {
+      XCTAssertTrue(gate.admitFromSystem(index, url: "myapp://item/\(index)", at: 5))
+    }
+
+    XCTAssertFalse(gate.admitFromApp(url: "myapp://item/\(count - 1)", at: 60))
+    XCTAssertTrue(gate.admitFromApp(url: "myapp://item/0", at: 60))
+  }
+
+  // MARK: The app handles links itself
+
+  func testDeliveredLinkPassedTwiceByTheAppGoesOutOnce() {
+    var gate = openGate(forwardsSystemLinks: false)
+    XCTAssertFalse(gate.admitFromSystem("tap", url: link, at: 5))
+
+    XCTAssertTrue(gate.admitFromApp(url: link, at: 6))
+    XCTAssertFalse(gate.admitFromApp(url: link, at: 30))
+  }
+
+  func testEachDeliveryLetsTheAppPassTheLinkOnce() {
+    var gate = openGate(forwardsSystemLinks: false)
+    _ = gate.admitFromSystem("tap", url: link, at: 5)
+    _ = gate.admitFromSystem("same tap, other life cycle", url: link, at: 5.1)
+    XCTAssertTrue(gate.admitFromApp(url: link, at: 6))
+
+    _ = gate.admitFromSystem("tap again", url: link, at: 300)
+    XCTAssertTrue(gate.admitFromApp(url: link, at: 301))
+    XCTAssertFalse(gate.admitFromApp(url: link, at: 330))
+  }
+
+  func testLaunchLinkPassedTwiceByTheAppGoesOutOnce() {
+    var gate = LinkGate<String>()
+    _ = gate.admitFromSystem("launch", url: link, at: 0)
+    XCTAssertEqual(gate.open(forwardsSystemLinks: false, at: 10), [])
+
+    XCTAssertTrue(gate.admitFromApp(url: link, at: 11))
+    XCTAssertFalse(gate.admitFromApp(url: link, at: 40))
+  }
+
+  /// A link shown inside the app, which iOS never delivered.
+  func testLinkIosNeverDeliveredGoesOutEachTimeTheAppPassesIt() {
+    for forwardsSystemLinks in [true, false] {
+      var gate = openGate(forwardsSystemLinks: forwardsSystemLinks)
+
+      XCTAssertTrue(gate.admitFromApp(url: link, at: 5))
+      XCTAssertTrue(gate.admitFromApp(url: link, at: 7.5))
+      XCTAssertFalse(gate.admitFromApp(url: link, at: 8))
+    }
+  }
 }
 
 final class LinkSpellingTests: XCTestCase {

@@ -11,16 +11,13 @@ public final class AdshiftFlutterSdkPlugin: NSObject, @preconcurrency FlutterPlu
   @preconcurrency FlutterSceneLifeCycleDelegate, @preconcurrency AdshiftHostApi
 {
   private let state = BridgeState.shared
-  private let calls = CallQueue()
   private weak var registrar: FlutterPluginRegistrar?
   private let flutterApi: AdshiftFlutterApi
 
   public static func register(with registrar: FlutterPluginRegistrar) {
     let instance = AdshiftFlutterSdkPlugin(registrar: registrar)
     AdshiftHostApiSetup.setUp(
-      binaryMessenger: QueuedMessenger(registrar.messenger(), calls: instance.calls),
-      api: instance
-    )
+      binaryMessenger: QueuedMessenger(registrar.messenger()), api: instance)
     registrar.addApplicationDelegate(instance)
     registrar.addSceneDelegate(instance)
   }
@@ -61,10 +58,8 @@ public final class AdshiftFlutterSdkPlugin: NSObject, @preconcurrency FlutterPlu
 
   // MARK: - AdshiftHostApi
 
-  // The calls arrive through `calls`, one at a time. A method that answers at
-  // once has made its SDK call when it returns. An `async` method lets the
-  // next call through with `releaseAfterCurrentWork()` and must not suspend
-  // between that and its SDK call.
+  // The calls arrive one at a time, each after the one before it has answered
+  // (see `CallQueue`). So a method answers only once its SDK call has returned.
 
   func initialize(options: InitializeMessage) -> ErrorMessage? {
     guard showsUI else { return refusal }
@@ -103,8 +98,9 @@ public final class AdshiftFlutterSdkPlugin: NSObject, @preconcurrency FlutterPlu
     return nil
   }
 
+  /// Answers when the SDK has started or refused to: the SDK starts in a task
+  /// of its own, and a `stop` made right after must find it started.
   func start() async -> StartMessage {
-    calls.releaseAfterCurrentWork()
     if let refusal {
       return StartMessage(success: false, error: refusal)
     }
@@ -163,13 +159,12 @@ public final class AdshiftFlutterSdkPlugin: NSObject, @preconcurrency FlutterPlu
     sdk?.clearThirdPartySharing()
   }
 
-  func refreshConsent() -> ConsentSnapshotMessage? {
+  func refreshConsent() async -> ConsentSnapshotMessage? {
     sdk.map { ConsentSnapshotMessage($0.refreshConsent()) }
   }
 
   /// Every event is passed by name.
   func trackEvent(name: String, values: [String: Any?]) async -> ErrorMessage? {
-    calls.releaseAfterCurrentWork()
     guard let sdk else { return refusal }
     var answer: ErrorMessage?
     await sdk.track(event: .customEvent(name), values: EventValues.native(values)) { response, error in
@@ -181,7 +176,6 @@ public final class AdshiftFlutterSdkPlugin: NSObject, @preconcurrency FlutterPlu
   func trackPurchase(productId: String, price: Double, currency: String, token: String) async
     -> ErrorMessage?
   {
-    calls.releaseAfterCurrentWork()
     guard let sdk else { return refusal }
     var answer: ErrorMessage?
     await sdk.trackPurchase(productId: productId, price: price, currency: currency, token: token) {
@@ -192,9 +186,9 @@ public final class AdshiftFlutterSdkPlugin: NSObject, @preconcurrency FlutterPlu
   }
 
   func logAdRevenue(data: AdRevenueMessage) async -> ErrorMessage? {
-    calls.releaseAfterCurrentWork()
     guard let sdk else { return refusal }
-    var parameters = EventValues.native(data.additionalParameters ?? [:])
+    var parameters = BridgeRules.adRevenueParameters(
+      EventValues.native(data.additionalParameters ?? [:]))
     if let adUnitId = data.adUnitId {
       parameters[ASInAppEventParameterName.adRevenueAdUnitId] = adUnitId
     }
@@ -217,20 +211,20 @@ public final class AdshiftFlutterSdkPlugin: NSObject, @preconcurrency FlutterPlu
     sdk?.getAdShiftDeviceId()
   }
 
-  /// Answers without waiting for the SDK, which can take seconds to resolve a
-  /// short link. The result arrives through the deep link listener only.
+  /// Answers when the SDK has taken the link, without waiting for the SDK to
+  /// resolve it, which can take seconds for a short link. The result arrives
+  /// through the deep link listener only.
   func handleDeepLink(url: String) async -> ErrorMessage? {
-    guard let sdk else {
-      calls.releaseAfterCurrentWork()
-      return refusal
-    }
+    guard let sdk else { return refusal }
     guard let link = URL(string: url), link.scheme?.isEmpty == false else {
-      calls.releaseAfterCurrentWork()
       return ErrorMessage(code: .invalidArgument, message: "url must be an absolute URL")
     }
-    Task {
-      calls.releaseAfterCurrentWork()
-      if state.admitLinkFromApp(link) {
+    guard state.admitLinkFromApp(link) else { return nil }
+    await withCheckedContinuation { taken in
+      Task { @MainActor in
+        // Resuming only schedules this method. It goes on when the main actor
+        // is free again: once the SDK call below has taken the link and waits.
+        taken.resume()
         _ = try? await sdk.handleDeepLink(url: link)
       }
     }
@@ -248,7 +242,7 @@ public final class AdshiftFlutterSdkPlugin: NSObject, @preconcurrency FlutterPlu
     }
   }
 
-  func handlePushNotification(payload: [String: Any?]) -> Bool {
+  func handlePushNotification(payload: [String: Any?]) async -> Bool {
     sdk?.handlePushNotification(userInfo: payload.compactMapValues { $0 }) ?? false
   }
 

@@ -911,7 +911,7 @@ interface AdshiftHostApi {
   fun enableGppDataCollection(enabled: Boolean)
   fun setThirdPartySharing(optOut: Boolean)
   fun clearThirdPartySharing()
-  fun refreshConsent(): ConsentSnapshotMessage?
+  suspend fun refreshConsent(): ConsentSnapshotMessage?
   suspend fun trackEvent(name: String, values: Map<String, Any?>): ErrorMessage?
   suspend fun trackPurchase(productId: String, price: Double, currency: String, token: String): ErrorMessage?
   suspend fun logAdRevenue(data: AdRevenueMessage): ErrorMessage?
@@ -919,7 +919,7 @@ interface AdshiftHostApi {
   suspend fun handleDeepLink(url: String): ErrorMessage?
   fun handlePastedDeepLink(url: String?)
   fun addPushNotificationDeepLinkPath(path: List<String>)
-  fun handlePushNotification(payload: Map<String, Any?>): Boolean
+  suspend fun handlePushNotification(payload: Map<String, Any?>): Boolean
   /** Dart listens from now on: results held on the native side are sent. */
   fun deepLinkListenerReady()
 
@@ -1182,12 +1182,14 @@ interface AdshiftHostApi {
         val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.adshift_flutter_sdk.AdshiftHostApi.refreshConsent$separatedMessageChannelSuffix", codec)
         if (api != null) {
           channel.setMessageHandler { _, reply ->
-            val wrapped: List<Any?> = try {
-              listOf(api.refreshConsent())
-            } catch (exception: Throwable) {
-              MessagesPigeonUtils.wrapError(exception)
+            CoroutineScope(Dispatchers.Main).launch {
+              val wrapped: List<Any?> = try {
+                listOf(api.refreshConsent())
+              } catch (exception: Throwable) {
+                MessagesPigeonUtils.wrapError(exception)
+              }
+              reply.reply(wrapped)
             }
-            reply.reply(wrapped)
           }
         } else {
           channel.setMessageHandler(null)
@@ -1330,12 +1332,14 @@ interface AdshiftHostApi {
           channel.setMessageHandler { message, reply ->
             val args = message as List<Any?>
             val payloadArg = args[0] as Map<String, Any?>
-            val wrapped: List<Any?> = try {
-              listOf(api.handlePushNotification(payloadArg))
-            } catch (exception: Throwable) {
-              MessagesPigeonUtils.wrapError(exception)
+            CoroutineScope(Dispatchers.Main).launch {
+              val wrapped: List<Any?> = try {
+                listOf(api.handlePushNotification(payloadArg))
+              } catch (exception: Throwable) {
+                MessagesPigeonUtils.wrapError(exception)
+              }
+              reply.reply(wrapped)
             }
-            reply.reply(wrapped)
           }
         } else {
           channel.setMessageHandler(null)

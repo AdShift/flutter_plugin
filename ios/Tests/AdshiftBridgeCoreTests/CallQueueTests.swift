@@ -7,11 +7,12 @@ final class CallQueueTests: XCTestCase {
   private let queue = CallQueue()
   private var log: [String] = []
 
-  /// A call that answers at once: its turn ends before it returns.
+  /// A call that answers before it returns, as a synchronous bridge method does.
   private func addCallThatAnswersAtOnce(_ name: String) {
     queue.add { turn in
-      self.log.append(name)
+      self.log.append("\(name) begins")
       self.queue.release(turn)
+      self.log.append("\(name) ends")
     }
   }
 
@@ -22,87 +23,64 @@ final class CallQueueTests: XCTestCase {
     }
   }
 
-  /// Returns once everything already put on the main queue has run.
-  private func mainQueueDrained() async {
-    await withCheckedContinuation { continuation in
-      DispatchQueue.main.async {
-        continuation.resume()
-      }
-    }
-  }
-
   func testCallsThatAnswerAtOnceAreDeliveredAsTheyArrive() {
     addCallThatAnswersAtOnce("first")
-    XCTAssertEqual(log, ["first"])
+    XCTAssertEqual(log, ["first begins", "first ends"])
 
     addCallThatAnswersAtOnce("second")
-    addCallThatAnswersAtOnce("third")
-    XCTAssertEqual(log, ["first", "second", "third"])
+    XCTAssertEqual(log, ["first begins", "first ends", "second begins", "second ends"])
   }
 
   func testCallThatAnswersLaterHoldsTheFollowingOnesBack() {
     addCallThatAnswersLater("event")
     addCallThatAnswersAtOnce("stop")
-    addCallThatAnswersAtOnce("setter")
+    addCallThatAnswersLater("link")
     XCTAssertEqual(log, ["event"])
 
     queue.release(1)
-    XCTAssertEqual(log, ["event", "stop", "setter"])
+    XCTAssertEqual(log, ["event", "stop begins", "stop ends", "link"])
   }
 
-  /// What a method that answers later does: it asks for the next call, then
-  /// hands its request over in the same stretch of code.
-  func testNextCallWaitsUntilTheRequestIsHandedOver() async {
+  func testEachCallThatAnswersLaterHoldsItsOwnTurn() {
+    addCallThatAnswersLater("start")
     addCallThatAnswersLater("event")
     addCallThatAnswersAtOnce("stop")
 
-    queue.releaseAfterCurrentWork()
-    log.append("event handed to the SDK")
-    XCTAssertEqual(log, ["event", "event handed to the SDK"])
-
-    await mainQueueDrained()
-    XCTAssertEqual(log, ["event", "event handed to the SDK", "stop"])
-  }
-
-  func testEachCallThatAnswersLaterHoldsItsOwnTurn() async {
-    addCallThatAnswersLater("event")
-    addCallThatAnswersLater("link")
-    addCallThatAnswersAtOnce("stop")
-
-    queue.releaseAfterCurrentWork()
-    await mainQueueDrained()
-    XCTAssertEqual(log, ["event", "link"])
-
-    queue.releaseAfterCurrentWork()
-    await mainQueueDrained()
-    XCTAssertEqual(log, ["event", "link", "stop"])
-  }
-
-  func testEndedTurnDoesNotEndALaterOne() async {
-    addCallThatAnswersLater("event")
-    addCallThatAnswersLater("link")
-    addCallThatAnswersAtOnce("stop")
-
-    queue.releaseAfterCurrentWork()
     queue.release(1)
-    XCTAssertEqual(log, ["event", "link"])
+    XCTAssertEqual(log, ["start", "event"])
 
-    // The release asked for during the first turn arrives during the second.
-    await mainQueueDrained()
+    queue.release(2)
+    XCTAssertEqual(log, ["start", "event", "stop begins", "stop ends"])
+  }
+
+  /// The next call starts when the answering one has returned, not inside it.
+  func testNextCallStartsAfterTheAnsweringOneHasReturned() {
+    addCallThatAnswersLater("event")
+    addCallThatAnswersAtOnce("stop")
+    addCallThatAnswersAtOnce("setter")
+
+    queue.release(1)
+    XCTAssertEqual(log, ["event", "stop begins", "stop ends", "setter begins", "setter ends"])
+  }
+
+  func testSecondAnswerToACallDoesNotEndALaterTurn() {
+    addCallThatAnswersLater("event")
+    addCallThatAnswersLater("link")
+    addCallThatAnswersAtOnce("stop")
+
+    queue.release(1)
     queue.release(1)
     XCTAssertEqual(log, ["event", "link"])
 
     queue.release(2)
-    XCTAssertEqual(log, ["event", "link", "stop"])
+    XCTAssertEqual(log, ["event", "link", "stop begins", "stop ends"])
   }
 
-  func testReleaseAskedForBeforeACallDoesNotEndItsTurn() async {
+  func testAnswerWithNothingDeliveredDoesNothing() {
     queue.release(1)
-    queue.releaseAfterCurrentWork()
     addCallThatAnswersLater("event")
     addCallThatAnswersAtOnce("stop")
 
-    await mainQueueDrained()
     XCTAssertEqual(log, ["event"])
   }
 }

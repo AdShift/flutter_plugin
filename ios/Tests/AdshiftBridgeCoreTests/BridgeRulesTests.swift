@@ -177,3 +177,24 @@ final class OptionRuleTests: XCTestCase {
     XCTAssertEqual(BridgeRules.milliseconds(.max), Int(Int32.max))
   }
 }
+
+final class AdRevenueRuleTests: XCTestCase {
+  func testReservedKeysAreRemovedFromAdditionalParameters() {
+    let parameters = BridgeRules.adRevenueParameters([
+      "as_revenue": "9.99",
+      "as_currency": "EUR",
+      "as_adrev_source": "other",
+      "as_adrev_network_name": "other",
+      "as_adrev_ad_type": "banner",
+      "placement": "home",
+    ])
+
+    XCTAssertEqual(parameters, ["as_adrev_ad_type": "banner", "placement": "home"])
+  }
+
+  func testOtherAdRevenueKeysAreKept() {
+    let parameters = ["as_adrev_ad_unit_id": "unit", "as_adrev_precision": "exact", "revenue": "1"]
+
+    XCTAssertEqual(BridgeRules.adRevenueParameters(parameters), parameters)
+  }
+}

@@ -146,6 +146,7 @@ class EventsTest : BridgeTest() {
         host.plugin.setBrandedDomains(listOf("go.example.com", ""))
         host.plugin.setMetaAppId("1234567890")
         host.plugin.setOaidData("oaid-1")
+        idle()
 
         verify { AdShiftLib.setCustomerUserId("user-1") }
         verify { AdShiftLib.setDebugLog(false) }
@@ -161,6 +162,7 @@ class EventsTest : BridgeTest() {
         every { AdShiftLib.setCustomerUserId(any()) } throws IllegalStateException("broken")
 
         host.plugin.setCustomerUserId("user-1")
+        idle()
     }
 
     @Test
@@ -172,10 +174,11 @@ class EventsTest : BridgeTest() {
         plugin.setCustomerUserId("user-1")
         plugin.setThirdPartySharing(true)
         plugin.addPushNotificationDeepLinkPath(listOf("data", "link"))
+        idle()
 
         assertEquals(before, sdk.calls)
-        assertNull("consent", plugin.refreshConsent())
-        assertEquals(false, plugin.handlePushNotification(mapOf(PUSH_LINK_KEY to LINK)))
+        assertNull("consent", dartCalls { plugin.refreshConsent() }.value)
+        assertEquals(false, dartCalls { plugin.handlePushNotification(mapOf(PUSH_LINK_KEY to LINK)) }.value)
     }
 
     @Test
@@ -184,6 +187,7 @@ class EventsTest : BridgeTest() {
         host.plugin.addPushNotificationDeepLinkPath(listOf("data", "link"))
         host.plugin.addPushNotificationDeepLinkPath(listOf(PUSH_LINK_KEY))
         host.plugin.addPushNotificationDeepLinkPath(listOf(""))
+        idle()
 
         verify(exactly = 1) { AdShiftLib.addPushNotificationDeepLinkPath("data", "link") }
         assertEquals("with the path of initialize", 2, sdk.count("addPushNotificationDeepLinkPath"))
@@ -193,11 +197,13 @@ class EventsTest : BridgeTest() {
     fun `registers a push link path again after the sdk refused it`() {
         every { AdShiftLib.addPushNotificationDeepLinkPath(*anyVararg()) } throws IllegalStateException("broken")
         host.plugin.addPushNotificationDeepLinkPath(listOf("data", "link"))
+        idle()
 
         every { AdShiftLib.addPushNotificationDeepLinkPath(*anyVararg()) } answers {
             sdk.calls += "addPushNotificationDeepLinkPath"
         }
         host.plugin.addPushNotificationDeepLinkPath(listOf("data", "link"))
+        idle()
 
         assertEquals("with the path of initialize", 2, sdk.count("addPushNotificationDeepLinkPath"))
     }
@@ -206,7 +212,7 @@ class EventsTest : BridgeTest() {
     fun `hands a notification payload to the sdk and returns its answer`() {
         val payload = mapOf(PUSH_LINK_KEY to LINK, "nested" to mapOf("a" to 1L), "empty" to null)
 
-        assertTrue("accepted", host.plugin.handlePushNotification(payload))
+        assertTrue("accepted", dartCalls { host.plugin.handlePushNotification(payload) }.value)
 
         verify { AdShiftLib.handlePushNotification(payload) }
     }

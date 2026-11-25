@@ -31,7 +31,10 @@ internal class AdshiftBridge private constructor() {
         private const val HELD_RESULT_LIMIT = 20
     }
 
-    /** Runs on the main thread, each block in a later turn of it and in the order launched. */
+    /**
+     * Runs on the main thread, each block in a later turn of it and in the order launched. It is
+     * the queue Flutter puts the bridge methods on that answer later.
+     */
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     var sdkInitialized = false
@@ -45,7 +48,7 @@ internal class AdshiftBridge private constructor() {
     private var optionsApplied = false
     private var autoHandleDeepLinks = true
 
-    /** The instances attached to an Activity, the latest last. */
+    /** The instances attached to an Activity; the one whose Activity started last comes last. */
     private val attached = ArrayList<AdshiftFlutterSdkPlugin>()
 
     /** The Intents handed to the SDK, each with whether the SDK took a notification's link from it. */
@@ -56,9 +59,13 @@ internal class AdshiftBridge private constructor() {
 
     private val heldResults = ArrayDeque<DeepLinkResult>()
 
-    /** Only the instance attached to an Activity last may call the SDK and gets its results. */
+    /**
+     * Only the instance whose Activity started last, the one the user sees, may call the SDK and
+     * gets its results.
+     */
     fun isOwner(plugin: AdshiftFlutterSdkPlugin): Boolean = attached.lastOrNull() === plugin
 
+    /** The Activity of [plugin] was attached, or has started again. */
     fun attach(plugin: AdshiftFlutterSdkPlugin) {
         attached.remove(plugin)
         attached.add(plugin)
@@ -155,16 +162,26 @@ internal class AdshiftBridge private constructor() {
      * Activity was created with, then the latest it received. They wait for `initialize`. They
      * also wait while the Activity's state is saved and the Activity has not started again: that
      * state says the SDK does not have the launch Intent, and a process killed before the next
-     * save would be re-created from it and count the same link a second time.
+     * save would be re-created from it and count the same link a second time. The same goes for
+     * the launch Intent's link when the app passed it itself meanwhile.
      */
     fun forwardWaitingIntents(plugin: AdshiftFlutterSdkPlugin) {
         val intents = plugin.intents ?: return
         if (!optionsApplied || intents.stateSaved) return
         val waiting = intents.waiting()
         intents.waitingIntent = null
-        if (!autoHandleDeepLinks) return
-        for (intent in waiting) {
-            forward(intent)?.let { pushAccepted -> intents.forwarded(intent, pushAccepted) }
+        if (autoHandleDeepLinks) {
+            for (intent in waiting) {
+                forward(intent)?.let { pushAccepted -> intents.forwarded(intent, pushAccepted) }
+            }
+        }
+        val link = intents.deferredLaunchLink ?: return
+        intents.deferredLaunchLink = null
+        try {
+            AdShiftLib.handleAppLinkIntent(Intent(Intent.ACTION_VIEW, link))
+            intents.launchLinkPassed()
+        } catch (e: Exception) {
+            Log.w(TAG, "Link not processed: ${e.javaClass.simpleName}")
         }
     }
 
@@ -189,13 +206,22 @@ internal class AdshiftBridge private constructor() {
         return pushAccepted
     }
 
-    /** Hands the SDK a link the app passed itself, unless the link is counted with an Intent. */
+    /**
+     * Hands the SDK a link the app passed itself, unless the link is counted with an Intent. The
+     * link the Activity was opened with waits, like the Intent itself, while the Activity's state
+     * is saved and the Activity has not started again.
+     */
     fun forwardLink(plugin: AdshiftFlutterSdkPlugin, url: String, uri: Uri): ErrorMessage? {
         val key = linkKey(url)
         if (countedWithAnIntent(plugin, key)) return null
+        val launch = plugin.intents?.takeIf { it.opensWith(key) }
+        if (launch != null && launch.stateSaved) {
+            launch.deferredLaunchLink = uri
+            return null
+        }
         return try {
             AdShiftLib.handleAppLinkIntent(Intent(Intent.ACTION_VIEW, uri))
-            plugin.intents?.passedByApp(key)
+            launch?.launchLinkPassed()
             null
         } catch (e: Exception) {
             thrownError(e)
@@ -203,12 +229,20 @@ internal class AdshiftBridge private constructor() {
     }
 
     /**
-     * Hands the SDK a notification payload the app passed itself, unless a link in it is counted
-     * with an Intent: the notification's own, which the SDK already took the link from.
+     * Hands the SDK a notification payload the app passed itself, unless the SDK has the
+     * notification, or will get it, with its Intent: one of the payload's links is among those the
+     * SDK took from the extras of an Intent of the Activity, or is in the extras of one that waits.
+     * A link that was only the data of an Intent says nothing about a notification.
      */
-    fun forwardPush(plugin: AdshiftFlutterSdkPlugin, payload: Map<String, Any?>): Boolean =
-        payloadLinkKeys(payload).any { countedWithAnIntent(plugin, it) } ||
-            AdShiftLib.handlePushNotification(payload)
+    fun forwardPush(plugin: AdshiftFlutterSdkPlugin, payload: Map<String, Any?>): Boolean {
+        val intents = plugin.intents
+        if (intents != null) {
+            val waitingLinks = waitingToBeForwarded(intents).flatMap(::extrasLinkKeys)
+            val counted = payloadLinkKeys(payload).any { intents.hasNotificationLink(it) || it in waitingLinks }
+            if (counted) return true
+        }
+        return AdShiftLib.handlePushNotification(payload)
+    }
 
     /**
      * Whether the SDK has the link, or will get it, with an Intent: one it took the link from in
@@ -224,11 +258,16 @@ internal class AdshiftBridge private constructor() {
             return true
         }
         val intents = plugin.intents ?: return false
-        if (intents.hasCounted(key)) return true
-        val waitingIsForwarded = autoHandleDeepLinks && (!optionsApplied || intents.stateSaved)
-        return waitingIsForwarded &&
-            intents.waiting().any { !it.isRelaunch && key in carriedLinkKeys(it) }
+        return intents.hasLink(key) || waitingToBeForwarded(intents).any { key in carriedLinkKeys(it) }
     }
+
+    /** The Intents of the Activity that wait and will be forwarded; none when the app handles deep links itself. */
+    private fun waitingToBeForwarded(intents: ActivityIntents): List<Intent> =
+        if (autoHandleDeepLinks && (!optionsApplied || intents.stateSaved)) {
+            intents.waiting().filterNot { it.isRelaunch }
+        } else {
+            emptyList()
+        }
 
     /** Sends [result] to the Dart side that owns the SDK, or holds it until that side listens. */
     private fun deliver(result: DeepLinkResult) {
@@ -273,7 +312,7 @@ internal class AdshiftBridge private constructor() {
 internal class ActivityIntents(val launchIntent: Intent?) {
 
     private companion object {
-        const val COUNTED_LINK_LIMIT = 100
+        const val REMEMBERED_LINK_LIMIT = 100
     }
 
     /** Whether the SDK has [launchIntent], from this Activity or the one it was re-created from. */
@@ -287,50 +326,77 @@ internal class ActivityIntents(val launchIntent: Intent?) {
     /** The latest Intent the running Activity received that the SDK does not have yet. */
     var waitingIntent: Intent? = null
 
+    /** The link of [launchIntent], passed by the app while [stateSaved] and not handed over yet. */
+    var deferredLaunchLink: Uri? = null
+
     /** Whether the Activity's state was saved and the Activity has not started again since. */
     var stateSaved = false
 
     private var followedByNewIntent = false
 
-    /** By [linkKey], the links the SDK has from this Activity's Intents; the latest of them. */
-    private val countedLinks = LinkedHashSet<String>()
+    /** By [linkKey], the links the SDK has as the data of this Activity's Intents; the latest of them. */
+    private val dataLinks = LinkedHashSet<String>()
+
+    /** By [linkKey], the links in the extras of the Intents the SDK took a notification's link from. */
+    private val notificationLinks = LinkedHashSet<String>()
 
     init {
         // A relaunch from Recents repeats an earlier open, whose links were counted then.
-        if (launchIntent?.isRelaunch == true) count(carriedLinkKeys(launchIntent))
+        if (launchIntent?.isRelaunch == true) {
+            dataLinkKey(launchIntent)?.let { dataLinks += it }
+            notificationLinks += extrasLinkKeys(launchIntent)
+        }
     }
 
     /** The Intents the SDK does not have yet, in the order they arrived. */
     fun waiting(): List<Intent> =
         listOfNotNull(launchIntent.takeUnless { launchForwarded }, waitingIntent)
 
+    /** Whether [key] is the link the Activity was opened with and no Intent has arrived since. */
+    fun opensWith(key: String): Boolean =
+        !followedByNewIntent && launchIntent?.let(::dataLinkKey) == key
+
     /** The running Activity received [intent], which carries [links]. */
     fun received(intent: Intent, links: Set<String>) {
         followedByNewIntent = true
         waitingIntent = intent
-        countedLinks.removeAll(links)
+        dataLinks.removeAll(links)
+        notificationLinks.removeAll(links)
     }
 
-    /** The SDK was handed [intent], now or before the Activity was re-created. */
+    /** The SDK was handed [intent]. It reads an app link from a view Intent only. */
     fun forwarded(intent: Intent, pushAccepted: Boolean) {
-        if (intent === launchIntent) {
-            launchForwarded = true
-            launchPushAccepted = pushAccepted
-        }
-        count(takenLinkKeys(intent, pushAccepted))
+        if (intent === launchIntent) launchForwarded = true
+        if (intent.action == Intent.ACTION_VIEW) dataLinkKey(intent)?.let { remember(dataLinks, listOf(it)) }
+        if (pushAccepted) notificationTaken(intent)
     }
 
-    /** The app passed a link itself: when it is the one the Activity was opened with, the SDK has it now. */
-    fun passedByApp(key: String) {
-        if (followedByNewIntent || launchIntent?.let(::dataLinkKey) != key) return
+    /** What the SDK has from [launchIntent] by the saved state the Activity was re-created from. */
+    fun restored(forwarded: Boolean, pushAccepted: Boolean) {
+        val launch = launchIntent ?: return
+        if (forwarded) forwarded(launch, pushAccepted = false)
+        if (pushAccepted) notificationTaken(launch)
+    }
+
+    private fun notificationTaken(intent: Intent) {
+        if (intent === launchIntent) launchPushAccepted = true
+        remember(notificationLinks, extrasLinkKeys(intent))
+    }
+
+    /** The SDK has the link the Activity was opened with: the app passed it itself. */
+    fun launchLinkPassed() {
         launchForwarded = true
-        count(listOf(key))
+        if (!followedByNewIntent) launchIntent?.let(::dataLinkKey)?.let { remember(dataLinks, listOf(it)) }
     }
 
-    fun hasCounted(key: String): Boolean = key in countedLinks
+    /** Whether the SDK has the link from one of this Activity's Intents. */
+    fun hasLink(key: String): Boolean = key in dataLinks || key in notificationLinks
 
-    private fun count(keys: Collection<String>) {
-        countedLinks += keys
-        while (countedLinks.size > COUNTED_LINK_LIMIT) countedLinks.remove(countedLinks.first())
+    /** Whether the link was in the extras of an Intent the SDK took a notification's link from. */
+    fun hasNotificationLink(key: String): Boolean = key in notificationLinks
+
+    private fun remember(links: LinkedHashSet<String>, keys: Collection<String>) {
+        links += keys
+        while (links.size > REMEMBERED_LINK_LIMIT) links.remove(links.first())
     }
 }

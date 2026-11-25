@@ -22,8 +22,8 @@ import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * Connects one Flutter engine to the AdShift SDK. The SDK runs once per process and answers to the
- * engine attached to the app's Activity; in any other engine, such as one that runs Dart in the
- * background, calls are answered without reaching the SDK.
+ * engine of the Activity the user sees, or saw last; in any other engine, such as one that runs
+ * Dart in the background, calls are answered without reaching the SDK.
  */
 class AdshiftFlutterSdkPlugin :
     FlutterPlugin,
@@ -49,7 +49,7 @@ class AdshiftFlutterSdkPlugin :
     internal var intents: ActivityIntents? = null
         private set
 
-    /** Tells when the attached Activity comes back, so that the Intents held while it was away go on. */
+    /** Tells when the attached Activity comes back to the user. */
     private val activityStarts = object : Application.ActivityLifecycleCallbacks {
         override fun onActivityStarted(activity: Activity) = onStarted(activity)
         override fun onActivityResumed(activity: Activity) = onStarted(activity)
@@ -101,9 +101,11 @@ class AdshiftFlutterSdkPlugin :
 
     /** Flutter calls this while the Activity is created; [bundle] is null unless it is re-created. */
     override fun onRestoreInstanceState(bundle: Bundle?) {
-        val launch = intents?.launchIntent
-        if (launch != null && bundle?.getBoolean(STATE_LAUNCH_INTENT_FORWARDED) == true) {
-            intents?.forwarded(launch, bundle.getBoolean(STATE_LAUNCH_PUSH_ACCEPTED))
+        if (bundle != null) {
+            intents?.restored(
+                forwarded = bundle.getBoolean(STATE_LAUNCH_INTENT_FORWARDED),
+                pushAccepted = bundle.getBoolean(STATE_LAUNCH_PUSH_ACCEPTED),
+            )
         }
         bridge.forwardWaitingIntents(this)
     }
@@ -115,9 +117,11 @@ class AdshiftFlutterSdkPlugin :
         intents.stateSaved = true
     }
 
+    /** The Activity the user returns to drives the SDK again, and what waited for it goes on. */
     private fun onStarted(activity: Activity) {
         if (activity !== activityBinding?.activity) return
         intents?.stateSaved = false
+        bridge.attach(this)
         bridge.forwardWaitingIntents(this)
     }
 
@@ -183,37 +187,33 @@ class AdshiftFlutterSdkPlugin :
             ?: StartMessage(success = true, keyStatus = KeyStatusMessage.PENDING)
     }
 
-    override fun stop() {
-        if (refusal() != null) return
-        // Queued behind a `start` called earlier, which Flutter runs in a later turn of the main thread.
-        bridge.scope.launch { sdk("stop") { AdShiftLib.stop() } }
-    }
+    override fun stop() = queued("stop") { AdShiftLib.stop() }
 
-    override fun setCustomerUserId(userId: String) = sdk("setCustomerUserId") {
+    override fun setCustomerUserId(userId: String) = queued("setCustomerUserId") {
         AdShiftLib.setCustomerUserId(userId)
     }
 
-    override fun setDebugEnabled(enabled: Boolean) = sdk("setDebugEnabled") {
+    override fun setDebugEnabled(enabled: Boolean) = queued("setDebugEnabled") {
         AdShiftLib.setDebugLog(enabled)
     }
 
-    override fun setAppOpenDebounceMs(ms: Long) = sdk("setAppOpenDebounceMs") {
+    override fun setAppOpenDebounceMs(ms: Long) = queued("setAppOpenDebounceMs") {
         AdShiftLib.setAppOpenDebounceMs(ms)
     }
 
-    override fun setBrandedDomains(domains: List<String>) = sdk("setBrandedDomains") {
+    override fun setBrandedDomains(domains: List<String>) = queued("setBrandedDomains") {
         AdShiftLib.setBrandedDomains(domains.filter { it.isNotBlank() })
     }
 
-    override fun setMetaAppId(appId: String) = sdk("setMetaAppId") {
+    override fun setMetaAppId(appId: String) = queued("setMetaAppId") {
         AdShiftLib.setMetaAppId(appId)
     }
 
-    override fun setOaidData(oaid: String) = sdk("setOaidData") {
+    override fun setOaidData(oaid: String) = queued("setOaidData") {
         AdShiftLib.setOaidData(oaid)
     }
 
-    override fun setConsentData(consent: ConsentMessage) = sdk("setConsentData") {
+    override fun setConsentData(consent: ConsentMessage) = queued("setConsentData") {
         AdShiftLib.setConsentData(
             if (consent.isUserSubjectToGdpr) {
                 AdShiftConsent.forGDPRUser(
@@ -227,25 +227,25 @@ class AdshiftFlutterSdkPlugin :
         )
     }
 
-    override fun enableTcfDataCollection(enabled: Boolean) = sdk("enableTcfDataCollection") {
+    override fun enableTcfDataCollection(enabled: Boolean) = queued("enableTcfDataCollection") {
         AdShiftLib.enableTCFDataCollection(enabled)
     }
 
-    override fun enableGppDataCollection(enabled: Boolean) = sdk("enableGppDataCollection") {
+    override fun enableGppDataCollection(enabled: Boolean) = queued("enableGppDataCollection") {
         AdShiftLib.enableGPPDataCollection(enabled)
     }
 
-    override fun setThirdPartySharing(optOut: Boolean) = sdk("setThirdPartySharing") {
+    override fun setThirdPartySharing(optOut: Boolean) = queued("setThirdPartySharing") {
         AdShiftLib.setThirdPartySharing(
             if (optOut) AdShiftThirdPartySharing.optedOut() else AdShiftThirdPartySharing.allowed()
         )
     }
 
-    override fun clearThirdPartySharing() = sdk("clearThirdPartySharing") {
+    override fun clearThirdPartySharing() = queued("clearThirdPartySharing") {
         AdShiftLib.clearThirdPartySharing()
     }
 
-    override fun refreshConsent(): ConsentSnapshotMessage? = sdk("refreshConsent", null) {
+    override suspend fun refreshConsent(): ConsentSnapshotMessage? = sdk("refreshConsent", null) {
         AdShiftLib.refreshConsent().toMessage()
     }
 
@@ -309,9 +309,9 @@ class AdshiftFlutterSdkPlugin :
     override fun handlePastedDeepLink(url: String?) = Unit
 
     override fun addPushNotificationDeepLinkPath(path: List<String>) =
-        sdk("addPushNotificationDeepLinkPath") { bridge.registerPushPath(path) }
+        queued("addPushNotificationDeepLinkPath") { bridge.registerPushPath(path) }
 
-    override fun handlePushNotification(payload: Map<String, Any?>): Boolean =
+    override suspend fun handlePushNotification(payload: Map<String, Any?>): Boolean =
         sdk("handlePushNotification", false) { bridge.forwardPush(this, payload) }
 
     /** Why this instance may not call the SDK now, or null when it may. */
@@ -323,10 +323,16 @@ class AdshiftFlutterSdkPlugin :
 
     private fun notOwner() = ErrorMessage(
         ErrorCodeMessage.NOT_INITIALIZED,
-        "The SDK runs only in the Flutter engine attached to the app's Activity",
+        "The SDK runs only in the Flutter engine of the app's current Activity",
     )
 
-    private inline fun sdk(method: String, call: () -> Unit) = sdk(method, Unit, call)
+    /**
+     * For a method that answers nothing: runs [call] on the queue Flutter runs the answering
+     * methods on, so that every call reaches the SDK in the order Dart made it.
+     */
+    private fun queued(method: String, call: () -> Unit) {
+        bridge.scope.launch { sdk(method, Unit, call) }
+    }
 
     /** Runs [call] when this instance may call the SDK; [otherwise] also stands in for a failure. */
     private inline fun <T> sdk(method: String, otherwise: T, call: () -> T): T {

@@ -77,7 +77,8 @@ final class BridgeState {
     }
   }
 
-  /// False when the same URL went to the SDK within the last two seconds.
+  /// False when the SDK has this link already: from iOS's delivery of it, or
+  /// from the app less than two seconds ago.
   func admitLinkFromApp(_ url: URL) -> Bool {
     links.admitFromApp(url: url.absoluteString, at: now)
   }

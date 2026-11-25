@@ -50,9 +50,8 @@ final class AdshiftConfig {
   /// such a domain comes back `notFound` and is not counted as a click.
   final List<String>? brandedDomains;
 
-  /// Marks every click and event as test traffic, which is kept out of
-  /// reports, postbacks and billing. A debug build does not turn it on.
-  /// Default: off.
+  /// Marks every click and event as test traffic, which is kept out of your
+  /// reports. A debug build does not turn it on. Default: off.
   final bool? testMode;
 
   /// Meta app id used to parse Meta App Links. Android only.
@@ -61,7 +60,8 @@ final class AdshiftConfig {
   /// Key paths inside a push notification payload that carry an AdShift deep
   /// link, e.g. `[['data', 'as_push_link']]`. Your own paths take over from
   /// the top-level `as_push_link` the SDK reads by default, so list that key
-  /// too if your payloads also use it.
+  /// too if your payloads also use it. A path that leads through a JSON string
+  /// works on Android only.
   final List<List<String>>? pushDeepLinkPaths;
 
   /// Passes every link that opens the app to the SDK. Set to false to call
@@ -90,9 +90,11 @@ final class AdshiftConfig {
   final bool? collectOaid;
 
   /// Called when the SDK declines a call: an invalid argument, an unusable
-  /// config, a failed `start()`. On Android a rejected API key fails `start()`;
-  /// on iOS a rejected key is not reported. No call throws; methods without a
-  /// result report their problems only here.
+  /// config, a `start()` the SDK answered with a failure. A `start()` that
+  /// fails because the platform call itself failed is only in its result. On
+  /// Android a rejected API key fails `start()`; on iOS it is usually not
+  /// reported. No call throws; methods without a result report their problems
+  /// only here.
   final void Function(AdshiftError error)? onError;
 
   /// The options that were set, with the API key masked.

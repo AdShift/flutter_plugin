@@ -17,6 +17,7 @@ jobs:
   publish:
     needs: checks
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     environment: pub.dev
     permissions:
       contents: read

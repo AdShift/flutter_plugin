@@ -135,6 +135,45 @@ class StartTest : BridgeTest() {
     }
 
     @Test
+    fun `runs a setting after an event tracked before it`() {
+        // The event must carry the user id and the consent it was tracked under, not the later ones.
+        host.dart.call("trackEvent", "logout", emptyMap<String, Any?>())
+        host.dart.call("setCustomerUserId", "guest")
+        host.dart.call("trackEvent", "browse", emptyMap<String, Any?>())
+        host.dart.call("setConsentData", ConsentMessage(isUserSubjectToGdpr = false))
+        idle()
+
+        assertEquals(
+            listOf("trackEvent", "setCustomerUserId", "trackEvent", "setConsentData"),
+            sdk.calls.filter { it == "trackEvent" || it.startsWith("set") }.takeLast(4),
+        )
+    }
+
+    @Test
+    fun `runs the calls that answer and those that do not in the order dart made them`() {
+        host.dart.call("trackEvent", "browse", emptyMap<String, Any?>())
+        host.dart.call("addPushNotificationDeepLinkPath", listOf("data", "link"))
+        host.dart.call("handlePushNotification", mapOf("data" to mapOf("link" to LINK)))
+        host.dart.call("setConsentData", ConsentMessage(isUserSubjectToGdpr = false))
+        host.dart.call("refreshConsent")
+        host.dart.call("stop")
+        assertEquals("calls run before their turn", 0, sdk.count("trackEvent"))
+        idle()
+
+        assertEquals(
+            listOf(
+                "trackEvent",
+                "addPushNotificationDeepLinkPath",
+                "handlePushNotification",
+                "setConsentData",
+                "refreshConsent",
+                "stop",
+            ),
+            sdk.calls.takeLast(6),
+        )
+    }
+
+    @Test
     fun `ignores a stop before initialize`() {
         Host().plugin.stop()
         idle()

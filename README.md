@@ -144,7 +144,7 @@ No call throws, and no returned `Future` completes with an error. You need no `t
 | `trackEvent()`, `trackPurchase()`, `logAdRevenue()` | `AdshiftResult`: `success`, `error` |
 | Everything else | The call is skipped and reported to `AdshiftConfig.onError`; where it returns a value, that is `null` or `false` |
 
-`onError` also receives a failed `start()`. In debug builds every report is also printed with the prefix `[AdShift]`; in release builds `onError` is the only place it shows, so register it. Before `initialize()` there is no `onError` yet: a refused call is only printed, in debug builds.
+`onError` also receives a `start()` the SDK answered with a failure, such as a rejected key or a device with tracking turned off. Three failures of `start()` are only in the returned result: a `start()` without an accepted `initialize()`, a `start()` that `stop()` interrupted, and an unexpected error of the platform call. In debug builds every report is also printed with the prefix `[AdShift]`; in release builds `onError` is the only place it shows, so register it. Before `initialize()` there is no `onError` yet: a refused call is only printed, in debug builds.
 
 ```dart
 Adshift.instance.initialize(
@@ -163,7 +163,7 @@ Every problem is an `AdshiftError`: `code`, a `message` for your logs, and `nati
 |---|---|---|
 | `NOT_INITIALIZED` (`notInitialized`) | `initialize()` has not been called, was refused, or the call came from [another Flutter engine](#one-engine) | Call `initialize()` first, with a valid config, from the app's main isolate |
 | `NOT_STARTED` (`notStarted`) | `stop()` was called | Call `start()`. The declined call is not sent later |
-| `INVALID_API_KEY` (`invalidApiKey`) | The API key was rejected. Android answers `start()` with it; on iOS a rejected key is not reported to the app | Use the key of this platform's app from the dashboard. Nothing is reported until then |
+| `INVALID_API_KEY` (`invalidApiKey`) | The API key was rejected. Android answers `start()` with it; on iOS a rejected key is usually not reported to the app | Use the key of this platform's app from the dashboard. Nothing is reported until then |
 | `OPTED_OUT` (`optedOut`) | Tracking is turned off for this device | Nothing. It is not a mistake in your code and retrying does not change it |
 | `QUEUE_FULL` (`queueFull`) | More than 100 tracking calls are waiting for `start()`, or the SDK's own queue is full | Call `start()` on every launch. The declined call is dropped |
 | `INVALID_ARGUMENT` (`invalidArgument`) | An argument failed validation | Fix the call; `message` names the argument |
@@ -191,11 +191,11 @@ result.apiKeyValidationStatus; // pending, valid, invalid, or null
 ```
 
 - **Do not await it before the first frame.** On Android it waits up to 5 seconds for the check of the API key.
-- **A rejected API key shows differently on each platform.** On Android `start()` fails with `INVALID_API_KEY` within about 5 seconds; without an answer by then it succeeds with `pending`. On iOS `start()` answers before the key is checked, usually with `pending`, and a rejected key is not reported to the app: turn on `isDebug` and check the SDK's log while integrating. `pending` needs no action.
+- **A rejected API key shows differently on each platform.** On Android `start()` fails with `INVALID_API_KEY` within about 5 seconds; without an answer by then it succeeds with `pending`. On iOS `start()` answers before the key is checked, usually with `pending`, so a rejected key is usually not reported to the app: turn on `isDebug` and check the SDK's log while integrating. It is reported, as the status `invalid` and as `INVALID_API_KEY` to `onError`, only when the SDK already knows the verdict, for example at a `start()` after `stop()` in the same run. `pending` needs no action.
 - A device with tracking turned off answers `OPTED_OUT`.
 - Before `initialize()` it answers `NOT_INITIALIZED`. Called again while started, it answers success at once.
 - On iOS `start()` does not wait for the App Tracking Transparency answer. With `waitForATTBeforeStart` the first events are held until the answer, at most `attTimeoutMs`.
-- **Tracking calls made between `initialize()` and a successful `start()` wait, up to 100, and are sent in order.** Their futures complete once a `start()` has finished, which is why `start()` belongs on every launch path. If the start failed for a reason a retry cannot fix (`INVALID_API_KEY`, `OPTED_OUT`, `NOT_INITIALIZED`), they answer with that error, and so do tracking calls made after it. After any other failure they wait for the next `start()`.
+- **Tracking calls made between `initialize()` and a successful `start()` wait, up to 100, and are sent in order.** Their futures complete once a `start()` has finished, which is why `start()` belongs on every launch path. If the start failed for a reason a retry cannot fix (`INVALID_API_KEY`, `OPTED_OUT`, `NOT_INITIALIZED`), they answer with that error, and so do tracking calls made afterwards, until the next `start()`; if that `start()` followed a `stop()`, later tracking calls answer `NOT_STARTED`. After any other failure the waiting calls wait for the next `start()`.
 
 ### `stop()`
 
@@ -313,8 +313,9 @@ await Adshift.instance.logAdRevenue(
 
 - `mediationNetwork` is an `AdshiftMediationNetwork`: `appLovinMax`, `googleAdMob`, `ironSource`, `chartboost`, `topOn`, `tradPlus`, `adMost`, `appodeal`, `fyber`, `unity`, `yandex`, `customMediation`, `directMonetization`, `other`.
 - `revenue` is the revenue of one impression, not an aggregate, and must be positive. `currency` is a three-letter ISO 4217 code.
-- An impression above 10 USD is not recorded; on Android the limit is 10 in whatever currency you pass. The result is still a success, because success means the call reached the SDK; in debug builds the plugin prints a warning.
-- The four required arguments and `adUnitId` and `precision` have parameter names of their own. Do not repeat them in `additionalParameters`.
+- An impression above 10 USD is not recorded; on Android the limit is 10 in whatever currency you pass. In debug builds the plugin prints a warning.
+- **A successful answer means the record was handed to the SDK, which gives no verdict on ad revenue.** It is a success also for an impression above the limit and on a device with tracking turned off.
+- The four required arguments and `adUnitId` and `precision` have parameter names of their own. Do not repeat them in `additionalParameters`. On iOS the keys `revenue`, `value` and `currency` in `additionalParameters` are ignored.
 
 ---
 
@@ -374,7 +375,7 @@ With `autoHandleDeepLinks` on, which is the default, you write no linking code a
 - **Android** — the plugin reads the Intent that started the Activity and every Intent it receives later: App Links, your URL scheme, and taps on notifications whose Intent carries the link. A relaunch from Recents or the launcher, or an Activity the system re-created (a rotation, a return after the process was killed), does not count its link again.
 - **iOS** — the plugin receives Universal Links and URL scheme opens, at launch and while the app runs.
 
-A link that opens the app before `initialize()` waits for it, so it is read with your `brandedDomains`.
+A link that opens the app before `initialize()` waits for it and is handed to the SDK inside `initialize()`. So put your link domains in the config, or call `setBrandedDomains()` before `initialize()`: a domain set later is too late for that link.
 
 ### Next to Flutter's deep linking and other link plugins
 
@@ -416,6 +417,11 @@ AppLinks().uriLinkStream.listen((uri) {
 
 Use one way or the other, not both. The URL must be absolute; anything else is reported as `INVALID_ARGUMENT`. With manual forwarding the plugin reads nothing from the Android Intent, a tapped notification included: hand its payload over with [`handlePushNotification()`](#push-notifications).
 
+### One tap, one click
+
+- A link, or the link in a notification payload, that the plugin already passed to the SDK when it arrived from the system is not counted again when your app passes the same one, however much later. A new arrival from the system is a new tap.
+- A link the system never delivered, such as one from a banner inside your app, is counted each time your app passes it, except that the same link passed twice within ten seconds counts once.
+
 ### Deferred deep links
 
 On the first launch after install the SDK looks up the link the user tapped before installing and answers through `onDeepLink` with `isDeferred: true` within 5 seconds of `start()`: the link, `notFound` or `error`. With `waitForATTBeforeStart` on iOS the 5 seconds count from the ATT answer. Nothing to configure.
@@ -440,7 +446,7 @@ Call it on every way out of onboarding: the deferred deep link of the first laun
 
 ## Push Notifications
 
-The SDK reads an AdShift link from a push payload under the top-level key `as_push_link`. Name your own key paths with `pushDeepLinkPaths` in `initialize()` or with `addPushNotificationDeepLinkPath()`; they are searched in the order you add them.
+The SDK reads an AdShift link from a push payload under the top-level key `as_push_link`. Name your own key paths with `pushDeepLinkPaths` in the config, or with `addPushNotificationDeepLinkPath()` before `initialize()`: a notification that opened the app is read inside `initialize()`. The paths are searched in the order you add them. A path that leads through a JSON string, a value that holds JSON as text, works on Android only.
 
 Your own paths take over from `as_push_link`. If your payloads use both, list it too:
 
@@ -456,7 +462,7 @@ Adshift.instance.initialize(
 );
 ```
 
-- **Android** — with `autoHandleDeepLinks` on, the plugin handles a tapped notification itself when its Intent carries the payload, as the notifications Android shows for a Firebase message do. Your app does not need to call `handlePushNotification()` for it. If it does, even later, the link is still counted once.
+- **Android** — with `autoHandleDeepLinks` on, the plugin handles a tapped notification itself when its Intent carries the payload, as the notifications Android shows for a Firebase message do. Your app does not need to call `handlePushNotification()` for it. If it does, however much later, the link is still counted once.
 - **iOS** — hand the payload of the tapped notification over. Do the same on Android when your app builds its notifications itself, or with `autoHandleDeepLinks` off:
 
 ```dart
@@ -471,7 +477,7 @@ if (initial != null) {
 }
 ```
 
-`handlePushNotification()` answers `true` when the payload carried an AdShift link; the result then arrives through `onDeepLink` with the source `push`. The link must be a RightLink link with `pid` and `c` (or `campaign`), or a RightLink short link. A payload handed over twice counts once.
+`handlePushNotification()` answers `true` when the payload carried an AdShift link; the result then arrives through `onDeepLink` with the source `push`. The link must be a RightLink link with `pid` and `c` (or `campaign`), or a RightLink short link. What counts as one tap is in [One tap, one click](#one-tap-one-click).
 
 - **Hand over taps only, not deliveries.** The call records a tap.
 - A background message handler runs in [another engine](#one-engine), where the call does nothing.
@@ -561,7 +567,7 @@ Adshift.instance.clearThirdPartySharing();
 | `isDebug` | `bool` | both | off | Verbose SDK logging. On Android an explicit `false` also silences the SDK's informational logs and warnings |
 | `appOpenDebounceMs` | `int` | both | `10000` | Debounce for automatic `app_open` events, in milliseconds; not negative |
 | `brandedDomains` | `List<String>` | both | none | Your own link domains; without it their links are `notFound` and not counted as clicks |
-| `testMode` | `bool` | both | off | Marks every click and event as test traffic, kept out of reports, postbacks and billing. A debug build does not turn it on |
+| `testMode` | `bool` | both | off | Marks every click and event as test traffic, kept out of your reports. A debug build does not turn it on |
 | `metaAppId` | `String` | Android | none | Meta app id, for Meta App Links |
 | `pushDeepLinkPaths` | `List<List<String>>` | both | `[['as_push_link']]` | Key paths in push payloads that carry an AdShift link |
 | `autoHandleDeepLinks` | `bool` | both | on | Passes every link that opens the app to the SDK |
@@ -576,17 +582,17 @@ An option you leave out keeps the native SDK's default.
 
 ### Settings
 
-These calls return nothing. A value that fails validation (a blank string, a negative interval) is skipped and reported to `onError`. A call made before `initialize()` is kept and applied by it, so your setup code does not depend on call order; where the config sets the same option, the config wins.
+These calls return nothing. A value that fails validation (a blank string, a negative interval) is skipped and reported to `onError`. A call made before `initialize()` is kept and applied by it; where the config sets the same option, the config wins.
 
 | Call | What it does |
 |---|---|
 | `setCustomerUserId(String userId)` | Sets your own user id; see [Identity](#identity) |
 | `setDebugEnabled(bool enabled)` | Turns verbose SDK logging on or off |
 | `setAppOpenDebounceMs(int ms)` | Sets the debounce for automatic `app_open` events, in milliseconds |
-| `setBrandedDomains(List<String> domains)` | Sets your own link domains; call it before `start()` |
+| `setBrandedDomains(List<String> domains)` | Sets your own link domains. Call it before `initialize()`, or use `brandedDomains` in the config: the link that opened the app is read inside `initialize()` |
 | `setMetaAppId(String appId)` | Sets the Meta app id, for Meta App Links. Android; does nothing on iOS |
 | `setOaidData(String oaid)` | Passes an OAID your app obtained itself; set `collectOaid: false` as well. Android; does nothing on iOS |
-| `addPushNotificationDeepLinkPath(List<String> path)` | Adds a key path in push payloads that carries an AdShift link; see [Push Notifications](#push-notifications) |
+| `addPushNotificationDeepLinkPath(List<String> path)` | Adds a key path in push payloads that carries an AdShift link. Call it before `initialize()`, or use `pushDeepLinkPaths` in the config; see [Push Notifications](#push-notifications) |
 
 ---
 
@@ -800,7 +806,7 @@ cd example
 flutter run --dart-define=ADSHIFT_API_KEY=<your key>
 ```
 
-The example calls every part of the plugin and prints what comes back. It runs in test mode, so its traffic stays out of reports, postbacks and billing. It routes from `onDeepLink` with Flutter's own deep linking turned off, the first set-up in [Next to Flutter's deep linking](#next-to-flutters-deep-linking-and-other-link-plugins).
+The example calls the main parts of the plugin and prints what comes back. It runs in test mode, so its traffic stays out of your reports. It routes from `onDeepLink` with Flutter's own deep linking turned off, the first set-up in [Next to Flutter's deep linking](#next-to-flutters-deep-linking-and-other-link-plugins).
 
 ---
 
@@ -828,7 +834,7 @@ The example calls every part of the plugin and prints what comes back. It runs i
 
 **The first events on iOS arrive late** — `waitForATTBeforeStart: true` without an ATT prompt holds them for `attTimeoutMs`. Set the option only when your app shows the prompt.
 
-**Events are not sent** — check that `start()` answered `success: true`, register `onError`, and turn on `isDebug` to read the SDK's logs (Logcat tags `AdShiftSDK` and `AdShiftFlutter` on Android, the Xcode console on iOS). On Android a rejected API key fails `start()` with `INVALID_API_KEY`; on iOS it is not reported to the app and shows only in the SDK's log. iOS and Android have separate keys.
+**Events are not sent** — check that `start()` answered `success: true`, register `onError`, and turn on `isDebug` to read the SDK's logs (Logcat tags `AdShiftSDK` and `AdShiftFlutter` on Android, the Xcode console on iOS). On Android a rejected API key fails `start()` with `INVALID_API_KEY`; on iOS it is usually not reported to the app and shows only in the SDK's log. iOS and Android have separate keys.
 
 ---
 

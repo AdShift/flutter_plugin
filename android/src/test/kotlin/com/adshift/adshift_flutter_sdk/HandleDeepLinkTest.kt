@@ -128,7 +128,6 @@ class HandleDeepLinkTest : BridgeTest() {
 
     @Test
     fun `counts once the launch link the app passes again much later`() {
-        // Past the ten seconds in which the SDK itself would take a repeated link for the same tap.
         val host = Host(linkIntent()).also { it.initialize() }
         wait(Duration.ofSeconds(12))
 
@@ -275,6 +274,52 @@ class HandleDeepLinkTest : BridgeTest() {
     }
 
     @Test
+    fun `counts once the launch link the app passes while stopped and again after the process was killed`() {
+        // The app handles deep links itself; the saved state cannot say what it passes while stopped.
+        val first = Host(linkIntent())
+        val state = first.stop()
+        first.initialize(manual())
+        val answer = dartCalls { first.plugin.handleDeepLink(LINK) }
+        assertNull("error", answer.value)
+        assertEquals("forwarded while stopped", emptyList<String>(), sdk.forwardedLinks())
+
+        killProcess()
+        val second = Host(linkIntent(), state).also { it.initialize(manual()) }
+        dartCalls { second.plugin.handleDeepLink(LINK) }
+
+        assertEquals(listOf(LINK), sdk.forwardedLinks())
+    }
+
+    @Test
+    fun `forwards the launch link the app passed while stopped when the user returns`() {
+        val host = Host(linkIntent())
+        host.stop()
+        host.initialize(manual())
+        dartCalls { host.plugin.handleDeepLink(LINK) }
+        dartCalls { host.plugin.handleDeepLink(LINK) }
+        assertEquals("forwarded while stopped", emptyList<String>(), sdk.forwardedLinks())
+
+        host.start()
+        assertEquals("forwarded on return", listOf(LINK), sdk.forwardedLinks())
+
+        val again = host.recreatedInNewProcess(linkIntent()).also { it.initialize(manual()) }
+        dartCalls { again.plugin.handleDeepLink(LINK) }
+
+        assertEquals("with the link passed again after re-creation", listOf(LINK), sdk.forwardedLinks())
+    }
+
+    @Test
+    fun `forwards another link the app passes while stopped at once when it handles deep links itself`() {
+        val host = Host(linkIntent())
+        host.stop()
+        host.initialize(manual())
+
+        dartCalls { host.plugin.handleDeepLink(OTHER_LINK) }
+
+        assertEquals(listOf(OTHER_LINK), sdk.forwardedLinks())
+    }
+
+    @Test
     fun `refuses a url that is not absolute`() {
         val host = Host().also { it.initialize() }
 
@@ -304,6 +349,8 @@ class HandleDeepLinkTest : BridgeTest() {
         assertEquals(ErrorCodeMessage.NOT_INITIALIZED, answer.value?.code)
         assertEquals(emptyList<String>(), sdk.forwardedLinks())
     }
+
+    private fun manual() = options(autoHandleDeepLinks = false)
 
     @Test
     fun `reports what the sdk throws for a link`() {

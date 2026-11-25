@@ -52,9 +52,9 @@ class OwnerEngineTest : BridgeTest() {
         assertEquals(ErrorCodeMessage.NOT_INITIALIZED, purchase.value?.code)
         assertEquals(ErrorCodeMessage.NOT_INITIALIZED, revenue.value?.code)
         assertEquals(ErrorCodeMessage.NOT_INITIALIZED, link.value?.code)
-        assertNull("consent", background.refreshConsent())
+        assertNull("consent", dartCalls { background.refreshConsent() }.value)
         assertNull("device id", background.getAdShiftDeviceId())
-        assertFalse("push", background.handlePushNotification(mapOf(PUSH_LINK_KEY to LINK)))
+        assertFalse("push", dartCalls { background.handlePushNotification(mapOf(PUSH_LINK_KEY to LINK)) }.value)
         assertEquals("calls that reached the SDK", reachedByTheApp, sdk.calls)
 
         dartCalls { host.plugin.start() }
@@ -94,6 +94,44 @@ class OwnerEngineTest : BridgeTest() {
         assertEquals("device-id", first.plugin.getAdShiftDeviceId())
         assertEquals(listOf(LINK), first.dart.links)
         assertEquals(emptyList<String>(), second.dart.links)
+    }
+
+    @Test
+    fun `follows the activity the user goes back to`() {
+        // A link opened from another app starts a second Activity, with an engine of its own.
+        val first = Host().also { it.initialize() }
+        first.plugin.deepLinkListenerReady()
+        val second = Host(linkIntent()).also { it.initialize() }
+        second.plugin.deepLinkListenerReady()
+
+        first.start()
+        val event = dartCalls { first.plugin.trackEvent("as_login", emptyMap()) }
+        sdk.trackListener?.onSuccess()
+        idle()
+        sdk.deepLinkListener?.onDeepLinking(deepLinkResult(OTHER_LINK))
+
+        assertNull("error for the activity on screen", event.value)
+        assertEquals("results in the activity on screen", listOf<String?>(OTHER_LINK), first.dart.links)
+        assertEquals("results in the hidden activity", emptyList<String?>(), second.dart.links)
+        assertNull("device id in the hidden activity", second.plugin.getAdShiftDeviceId())
+
+        second.start()
+
+        assertEquals("device-id", second.plugin.getAdShiftDeviceId())
+        assertNull("device id in the activity left again", first.plugin.getAdShiftDeviceId())
+    }
+
+    @Test
+    fun `hands a result held for a hidden activity to the one the user goes back to`() {
+        val first = Host().also { it.initialize() }
+        first.plugin.deepLinkListenerReady()
+        Host(linkIntent())
+        sdk.deepLinkListener?.onDeepLinking(deepLinkResult(LINK))
+        assertEquals("sent before anyone on screen listens", emptyList<String?>(), first.dart.links)
+
+        first.start()
+
+        assertEquals(listOf<String?>(LINK), first.dart.links)
     }
 
     @Test
