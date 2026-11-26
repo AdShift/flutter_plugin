@@ -73,12 +73,32 @@ jobs:
           channel: stable
           flutter-version: ${{ matrix.flutter }}
           cache: true
+      - name: Keep Gradle and test runtime downloads between runs
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            ~/.m2/repository
+          key: gradle-${{ runner.os }}-${{ matrix.flutter }}-${{ hashFiles('adshift_flutter_sdk/android/build.gradle.kts', 'adshift_flutter_sdk/example/android/**/*.kts', 'adshift_flutter_sdk/example/android/gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-${{ matrix.flutter }}-
       - name: Prepare the example
         working-directory: adshift_flutter_sdk/example
         run: flutter build apk --config-only
       - name: Unit tests
         working-directory: adshift_flutter_sdk/example/android
-        run: ./gradlew :adshift_flutter_sdk:testDebugUnitTest
+        # Run again, up to three times, only when a download was refused: the
+        # package servers sometimes turn the build machines away for a while.
+        run: |
+          set -o pipefail
+          log="$RUNNER_TEMP/unit-tests.log"
+          for attempt in 1 2 3; do
+            ./gradlew :adshift_flutter_sdk:testDebugUnitTest 2>&1 | tee "$log" && exit 0
+            grep -qE "status code 429|response code: 429" "$log" || exit 1
+            [ "$attempt" = 3 ] || sleep 90
+          done
+          exit 1
       - name: Release build with code shrinking
         working-directory: adshift_flutter_sdk/example
         run: flutter build apk --release --target-platform android-arm64
@@ -97,7 +117,7 @@ jobs:
   ios:
     name: iOS (${{ matrix.flutter }})
     runs-on: macos-26
-    timeout-minutes: 45
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
@@ -120,18 +140,8 @@ jobs:
         working-directory: adshift_flutter_sdk/example
         run: flutter build ios --simulator --debug
       - name: Bridge test on a simulator
-        working-directory: adshift_flutter_sdk/example
-        timeout-minutes: 20
-        run: |
-          # An iPhone of the newest iOS runtime on the runner, fully booted before the test starts.
-          device=$(xcrun simctl list devices available -j | python3 -c "
-          import json, re, sys
-          runtimes = json.load(sys.stdin)['devices']
-          ios = {name: devices for name, devices in runtimes.items() if 'SimRuntime.iOS' in name and devices}
-          newest = max(ios, key=lambda name: [int(part) for part in re.findall(r'\d+', name)])
-          print(next(d['udid'] for d in ios[newest] if 'iPhone' in d['name']))")
-          xcrun simctl bootstatus "$device" -b
-          flutter test integration_test -d "$device"
+        timeout-minutes: 35
+        run: tool/ios_bridge_test.sh
 
   # The package as an integrator receives it, built in a fresh app.
   package:
